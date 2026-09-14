@@ -15,7 +15,7 @@ try {
   if (values.help) {
     console.log(`copilot-value [rank|refresh] [options]
 
-Ranks models enabled on your Copilot subscription using pi OAuth login.
+Ranks models enabled on your Copilot subscription using your gh CLI login.
 No inference calls. --all ranks the published catalog without authentication.
 Pretty output by default; --json emits one JSON object. No login needed for --help.
 

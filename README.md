@@ -1,24 +1,53 @@
 # copilot-value
 
-Rank models enabled on your GitHub Copilot subscription by Artificial Analysis benchmarks and estimated token cost. The CLI uses your GitHub CLI login (`gh auth login`) or `GITHUB_TOKEN`, prints a table by default, and supports JSON. It makes no inference calls and never enables models.
+Get the most out of your GitHub Copilot subscription. Copilot exposes 20+ models with prices that differ by 10x or more, and the model picker tells you nothing about which ones are good. `copilot-value` ranks the models your account can use by independent [Artificial Analysis](https://artificialanalysis.ai) benchmark scores and by what your workload would cost on each one, so you can pick the strongest model, the cheapest one that clears a quality bar, or the best score per dollar.
 
-Requires Node.js 22.19 or newer. This package is local-only and has a publish guard.
+```
+$ copilot-value --top 6
+
+#  MODEL          SCORE     USD  CREDITS  SCORE/$
+1  claude-opus-5   78.0  0.7500    75.00    104.0
+2  gpt-5.6-sol     77.4  0.6000    60.00    129.0
+3  gpt-6-astra     76.9  1.5000   150.00     51.3
+4  grok-4.6        76.8  0.2600    26.00    295.4
+5  gpt-5.6-terra   76.7  0.3200    32.00    239.7
+6  kimi-k3         76.2  0.4500    45.00    169.3
+```
+
+Row 4 is the point: near-identical coding score to row 1 at a third of the cost.
+
+- Only models enabled on your subscription, read live from Copilot.
+- No inference calls, no quota spent, nothing enabled or changed on your account.
+- Table by default, `--json` for scripts and agents.
+
+## Install
+
+Requires Node.js 22.19+ and the [GitHub CLI](https://cli.github.com) logged in (`gh auth login`), or `GITHUB_TOKEN` set.
 
 ```sh
-npm link --ignore-scripts
-copilot-value refresh
+npm install -g copilot-value
 copilot-value
-copilot-value --sort value
-copilot-value --all                     # Published catalog, without account filtering
-copilot-value --sort price --min-score 70
-copilot-value --sort value --metric intelligence --json
-copilot-value --input 100000 --cached-input 80000 --output 5000
-copilot-value --models gpt-5.5,claude-sonnet-4.6 --offline
 ```
+
+## Usage
+
+```sh
+copilot-value                                     # Coding score, top 10
+copilot-value --sort intelligence --top 5
+copilot-value --sort value                        # Score per estimated dollar
+copilot-value --sort price --min-score 70         # Cheapest model that clears the bar
+copilot-value --input 100000 --cached-input 80000 --output 5000   # Your workload shape
+copilot-value --models gpt-6-astra,claude-opus-5  # Compare a shortlist
+copilot-value --all                               # Full published catalog, no login needed
+copilot-value --json                              # One JSON object on stdout
+copilot-value refresh                             # Force-refresh all sources
+```
+
+`--help` lists every option. Exit codes: `0` results, `1` error, `2` nothing rankable.
 
 ## Data and rankings
 
-- Availability: the authenticated Copilot `/models` endpoint, using pi's OAuth login. Disabled, unconfigured, non-picker, and explicitly non-tool models are excluded. Individual accounts with no usable picker flags use explicitly enabled policies, matching pi's account-specific handling. Availability is cached for 15 minutes and timestamped. This internal endpoint can change independently of the package.
+- Availability: the authenticated Copilot `/models` endpoint, using your GitHub token. Disabled, unconfigured, non-picker, and explicitly non-tool models are excluded. Individual accounts with no usable picker flags use explicitly enabled policies. Availability is cached for 15 minutes and timestamped. This internal endpoint can change independently of the package.
 - Prices: https://models.dev/api.json (`github-copilot`). This is a community-maintained catalog. Verify billing at https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing.
 - Benchmarks: https://artificialanalysis.ai/api/v2/data/llms/models. Attribution: Artificial Analysis, https://artificialanalysis.ai.
 - `coding` and `intelligence` sort by the corresponding AA index. `value` sorts by index score divided by estimated workload USD. `price` sorts by estimated workload USD; `--min-score` excludes weaker models. Ties use cost, then model ID in lexical order.
