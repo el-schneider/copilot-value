@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { format, querySchema } from '../src/index.js';
 import { query as getRankings } from '../src/query.js';
 
@@ -9,10 +10,12 @@ try {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     ...Object.fromEntries(Object.keys(querySchema.properties).map(key => [names[key] ?? key, { type: 'string' }])),
     all: { type: 'boolean' }, host: { type: 'string' },
-    json: { type: 'boolean' }, offline: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
+    json: { type: 'boolean' }, offline: { type: 'boolean' }, help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
     cache: { type: 'string' }, 'aa-cache': { type: 'string' }, mapping: { type: 'string' }, models: { type: 'string' },
   } });
-  if (values.help) {
+  if (values.version) {
+    console.log(createRequire(import.meta.url)('../package.json').version);
+  } else if (values.help) {
     console.log(`copilot-value [rank|refresh] [options]
 
 Ranks models enabled on your Copilot subscription using your gh CLI login.
@@ -114,6 +117,6 @@ Value is score per workload dollar, not task success per dollar.`);
     if (!result.total) process.exitCode = 2;
   }
 } catch (error) {
-  console.error(`copilot-value: ${error.message}`);
+  console.error(process.argv.includes('--json') ? JSON.stringify({ error: error.message }) : `copilot-value: ${error.message}`);
   process.exitCode = 1;
 }

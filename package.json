@@ -17,7 +17,9 @@
     "src",
     "extensions",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "skills",
+    "CHANGELOG.md"
   ],
   "keywords": [
     "github-copilot",

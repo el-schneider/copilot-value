@@ -43,7 +43,17 @@ copilot-value --json                              # One JSON object on stdout
 copilot-value refresh                             # Force-refresh all sources
 ```
 
-`--help` lists every option. Exit codes: `0` results, `1` error, `2` nothing rankable.
+`--help` lists every option. Exit codes: `0` results, `1` error, `2` nothing rankable. With `--json`, errors are `{"error": "..."}` on stderr.
+
+## Agents
+
+Ships a skill for coding agents that teaches the JSON contract and its caveats:
+
+```sh
+npx skills add el-schneider/copilot-value
+```
+
+Every result carries `dispatchId` (`github-copilot/<id>`) for tools that take a provider/model string. The optional pi extension below registers a `copilot_value` tool and a `/gh-model` command.
 
 ## Data and rankings
 
