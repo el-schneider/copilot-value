@@ -1,0 +1,47 @@
+{
+  "name": "copilot-value",
+  "version": "0.1.0",
+  "description": "Rank GitHub Copilot models by Artificial Analysis scores and workload-specific token cost",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "bin": {
+    "copilot-value": "bin/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "extensions",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "github-copilot",
+    "artificial-analysis",
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/copilot-value.js"
+    ]
+  },
+  "scripts": {
+    "test": "node --test",
+    "test:pi": "node scripts/pi-smoke.js"
+  },
+  "license": "MIT",
+  "author": "Jonas Schneider",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/el-schneider/copilot-value.git"
+  },
+  "homepage": "https://github.com/el-schneider/copilot-value#readme",
+  "bugs": "https://github.com/el-schneider/copilot-value/issues",
+  "publishConfig": {
+    "access": "public"
+  }
+}
