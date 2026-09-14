@@ -1,6 +1,6 @@
 # copilot-value
 
-Get the most out of your GitHub Copilot subscription. Copilot offers 20+ models whose prices differ by 10x, and the picker says nothing about which are good. `copilot-value` ranks the models your account can use by [Artificial Analysis](https://artificialanalysis.ai) benchmark score and by what your workload costs on each, so you can pick the strongest, the cheapest above a quality bar, or the best score per dollar.
+Ranks the models available on your GitHub Copilot subscription by [Artificial Analysis](https://artificialanalysis.ai) benchmark score and by estimated token cost for a given workload. Useful for choosing between the dozens of Copilot models, whose prices span more than an order of magnitude and whose picker shows no quality signal.
 
 ```
 $ copilot-value --all --top 5
@@ -13,7 +13,7 @@ $ copilot-value --all --top 5
 5  grok-4.6           76.8  0.2600    26.00    295.4
 ```
 
-Row 5 is the point: 5 points below the leader at a sixth of the cost. Without `--all` you see only models enabled on your subscription.
+Without `--all` the list contains only models enabled on your subscription.
 
 No inference calls, no quota spent, nothing changed on your account.
 
