@@ -134,14 +134,13 @@ test('pi tool ranks only authenticated Copilot models; command requires selectio
   const dir = await temp(t), cache = join(dir, 'snapshot.json');
   await writeFile(cache, JSON.stringify(fixture()));
   const previous = process.env.COPILOT_VALUE_CACHE;
-  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const previousToken = process.env.GITHUB_TOKEN;
   process.env.COPILOT_VALUE_CACHE = cache;
-  process.env.PI_CODING_AGENT_DIR = dir;
-  await writeFile(join(dir, 'auth.json'), JSON.stringify({ 'github-copilot': { type: 'oauth', refresh: 'test-refresh', access: 'test-access', expires: Date.now() + 60000 } }));
+  process.env.GITHUB_TOKEN = 'test-token';
   t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ data: [{ id: 'alpha', model_picker_enabled: true, policy: { state: 'enabled' } }] })));
   t.after(() => {
     if (previous === undefined) delete process.env.COPILOT_VALUE_CACHE; else process.env.COPILOT_VALUE_CACHE = previous;
-    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    if (previousToken === undefined) delete process.env.GITHUB_TOKEN; else process.env.GITHUB_TOKEN = previousToken;
   });
   let tool, command, selectedModel, confirm = false;
   extension({ registerTool: t => { tool = t; }, registerCommand: (_, c) => { command = c; }, setModel: async m => { selectedModel = m; return true; }, getThinkingLevel: () => 'high' });
