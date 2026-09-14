@@ -1,6 +1,6 @@
 {
   "name": "copilot-value",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Rank GitHub Copilot models by Artificial Analysis scores and workload-specific token cost",
   "type": "module",
   "engines": {
