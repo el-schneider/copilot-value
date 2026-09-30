@@ -1,6 +1,11 @@
 # copilot-value
 
-Answers two questions about the models on your GitHub Copilot subscription: which one is the best value for money, and which one is best for coding. Useful because Copilot offers dozens of models, their prices span more than an order of magnitude, and the picker shows no quality signal.
+Get the most out of your GitHub Copilot subscription.
+
+- Which model gives me the most for my AI credits? `copilot-value`
+- Which model is strongest for coding? `copilot-value best`
+
+Copilot offers about 30 models. The same task can cost 100× more on one than on another, and the model picker shows no quality score. copilot-value ranks the models your plan enables by benchmark score and token cost.
 
 ```
 $ copilot-value
@@ -20,7 +25,7 @@ Not ranked: claude-opus-4.8-fast, gpt-5-mini, gpt-6.1-sol, mai-code-1.1-flash (-
 Scores: https://lmarena.ai/leaderboard/webdev · Prices: https://models.dev
 ```
 
-No inference calls, no quota spent, nothing changed on your account.
+Read-only: no inference calls, no quota spent, nothing changed on your account.
 
 ## Install
 

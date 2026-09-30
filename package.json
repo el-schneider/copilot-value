@@ -1,7 +1,7 @@
 {
   "name": "copilot-value",
   "version": "0.3.0",
-  "description": "Find the best-value and strongest GitHub Copilot models for coding, using LMArena or Artificial Analysis scores and your workload's token cost",
+  "description": "Get the most out of your GitHub Copilot subscription: find the best-value and strongest models for coding",
   "type": "module",
   "engines": {
     "node": ">=22.19.0"
