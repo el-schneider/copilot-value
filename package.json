@@ -1,7 +1,7 @@
 {
   "name": "copilot-value",
   "version": "0.3.0",
-  "description": "Rank GitHub Copilot models by Artificial Analysis scores and workload-specific token cost",
+  "description": "Find the best-value and strongest GitHub Copilot models for coding, using LMArena or Artificial Analysis scores and your workload's token cost",
   "type": "module",
   "engines": {
     "node": ">=22.19.0"
@@ -24,6 +24,7 @@
   "keywords": [
     "github-copilot",
     "artificial-analysis",
+    "lmarena",
     "pi-package"
   ],
   "pi": {

@@ -15,6 +15,9 @@ Each row scores higher and costs more than the one above; every unlisted model i
 5  claude-opus-5.5     1820  $0.600
 
 Cost per task: 100k input, 10k output.
+21 more models omitted: each is beaten on price and score by a listed model (copilot-value best lists all).
+Not ranked: claude-opus-4.8-fast, gpt-5-mini, gpt-6.1-sol, mai-code-1.1-flash (--verbose for reasons).
+Scores: https://lmarena.ai/leaderboard/webdev · Prices: https://models.dev
 ```
 
 No inference calls, no quota spent, nothing changed on your account.
