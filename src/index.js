@@ -129,13 +129,14 @@ async function fetchArena(signal) {
   return [first, ...rest].flatMap(p => p.rows).map(r => r.row).filter(r => r.category === 'overall')
     .map(r => ({ slug: r.model_name, name: r.model_name, score: r.rating }));
 }
-export async function loadSnapshot({ source = defaultSource(), cache = defaultCache(source), offline = false, refresh = false, signal } = {}) {
+export async function loadSnapshot({ source = defaultSource(), cache = defaultCache(source), offline = false, refresh = false, optional = false, signal } = {}) {
   if (offline && refresh) throw Error('offline and refresh cannot be combined');
   if (!(source in benchmarkSources)) throw Error(`Invalid source: ${source}`);
   let existing = refresh ? undefined : await readOptional(cache);
   if (existing?.version !== 2) existing = undefined;
   else if (validateSnapshot(existing).benchmarks.source !== source) existing = undefined;
   if (existing && (offline || Date.now() - Math.min(existing.pricingAt, existing.benchmarks.fetchedAt) < ttl)) return existing;
+  if (offline && optional) return undefined;
   if (offline) throw Error(`No offline ${source} snapshot at ${cache}; run copilot-value refresh first`);
   if (source === 'aa' && !process.env.ARTIFICIAL_ANALYSIS_API_KEY) throw Error('Source aa needs ARTIFICIAL_ANALYSIS_API_KEY (free at https://artificialanalysis.ai/data-api); omit --source to use LMArena without a key');
   const [catalog, entries] = await Promise.all([fetchJson(sources.pricing, undefined, signal), source === 'aa' ? fetchAA(signal) : fetchArena(signal)]);
@@ -158,15 +159,28 @@ function match(entries, source, id, mapped) {
   return hits.filter(e => e.score !== null).sort((a, b) => b.score - a.score)[0] ?? hits[0];
 }
 
-// Scores are noisy, prices are not: a model just below the frontier may be as good in practice.
+// For one source's scores, how far each model sits below the best score available at its price or less.
+function gapsFor(rows, score) {
+  const frontier = [];
+  for (const r of rows.filter(r => score.has(r.id)).sort((a, b) => a.costUsd - b.costUsd || score.get(b.id) - score.get(a.id)))
+    if (score.get(r.id) > (frontier.length ? score.get(frontier.at(-1).id) : -Infinity)) frontier.push(r);
+  return m => {
+    const parent = score.has(m.id) && frontier.findLast(f => f.costUsd <= m.costUsd);
+    return parent ? score.get(parent.id) - score.get(m.id) : Infinity;
+  };
+}
+
+// Scores are noisy, prices are not: a model just below the frontier on any source may be as good in practice.
 // Alternatives stay in their frontier row's price tier, and an older model is dropped when a newer one of its family is listed.
-function alternativesFor(rows, frontier, margin, catalog) {
+function alternativesFor(rows, frontier, catalog, sources) {
   const onFrontier = new Set(frontier.map(m => m.id));
+  const tests = sources.map(t => ({ ...t, gap: gapsFor(rows, t.score) }));
   const candidates = rows.filter(m => !onFrontier.has(m.id)).flatMap(m => {
     const i = frontier.findLastIndex(f => f.costUsd <= m.costUsd);
     const parent = frontier[i], next = frontier[i + 1];
-    return parent.score - m.score <= margin && (next ? m.costUsd < next.costUsd : m.costUsd <= parent.costUsd)
-      ? [{ ...m, alternativeTo: parent.id, gap: parent.score - m.score }] : [];
+    const closeOn = tests.filter(t => t.gap(m) <= t.margin).map(t => t.source);
+    return closeOn.length && (next ? m.costUsd < next.costUsd : m.costUsd <= parent.costUsd)
+      ? [{ ...m, alternativeTo: parent.id, closeOn, gap: parent.score - m.score }] : [];
   });
   const listed = [...frontier, ...candidates].map(m => catalog.get(m.id));
   const superseded = m => listed.some(o => o.family && o.family === m.family && o.release_date > m.release_date);
@@ -176,7 +190,7 @@ function alternativesFor(rows, frontier, margin, catalog) {
   return shown.map(({ gap, ...m }) => m);
 }
 
-export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
+export function rank(snapshot, raw = {}, { modelIds, mappings = {}, secondary } = {}) {
   validateSnapshot(snapshot);
   const o = options(raw);
   const { source, entries } = snapshot.benchmarks;
@@ -206,7 +220,7 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
     rows.push({ id: m.id, dispatchId: `github-copilot/${m.id}`, benchmark: { slug: found.slug, name: found.name }, score, costUsd, aiCredits: costUsd * 100, rates: { input: rates.input, output: rates.output, cacheRead: rates.cache_read ?? null, cacheWrite: rates.cache_write ?? null, threshold } });
   }
   if (allowed) for (const id of allowed) if (!snapshot.models.some(m => m.id === id)) skipped.push({ id, reason: 'No Copilot pricing in catalog' });
-  let frontier = rows, models;
+  let frontier = rows, models, hedge;
   if (o.mode === 'best') {
     rows.sort((a, b) => b.score - a.score || a.costUsd - b.costUsd || compare(a.id, b.id));
     models = rows.slice(0, o.top);
@@ -214,7 +228,14 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
     rows.sort((a, b) => a.costUsd - b.costUsd || b.score - a.score || compare(a.id, b.id));
     frontier = [];
     for (const m of rows) if (m.score > (frontier.at(-1)?.score ?? -Infinity)) frontier.push(m);
-    const alternatives = o.margin ? alternativesFor(rows, frontier, o.margin, new Map(snapshot.models.map(m => [m.id, m]))) : [];
+    if (secondary) {
+      validateSnapshot(secondary);
+      const { source: id, entries: other } = secondary.benchmarks;
+      const score = new Map(rows.flatMap(r => { const e = match(other, id, r.id); return e?.score != null ? [[r.id, e.score]] : []; }));
+      hedge = { source: id, margin: benchmarkSources[id].margin * o.margin / benchmarkSources[source].margin, score };
+    }
+    const tests = [{ source, margin: o.margin, score: new Map(rows.map(r => [r.id, r.score])) }, ...(hedge ? [hedge] : [])];
+    const alternatives = o.margin ? alternativesFor(rows, frontier, new Map(snapshot.models.map(m => [m.id, m])), tests) : [];
     models = frontier.slice(0, o.top).flatMap(f => [f, ...alternatives.filter(a => a.alternativeTo === f.id)]);
   }
   skipped.sort((a, b) => compare(a.id, b.id));
@@ -228,9 +249,10 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
       'Catalog membership is not account entitlement.',
       'Token-billed AI Credits only; not legacy premium-request plans.',
       benchmarkSources[source].caveat,
-      ...(o.mode === 'value' ? [`Value lists the price/score frontier: each row costs more and scores higher than the previous one; every omitted model is beaten on both. Alternatives score within ${o.margin} of a frontier model in the same price tier.`] : []),
+      ...(o.mode === 'value' ? [`Value lists the price/score frontier: each row costs more and scores higher than the previous one; every omitted model is beaten on both. Alternatives score within ${o.margin} of a frontier model${hedge ? ` (or within ${hedge.margin} on ${benchmarkSources[hedge.source].name})` : ''} in the same price tier.`] : []),
     ],
     total: frontier.length, models, skipped,
+    hedge: hedge ? { source: hedge.source, name: benchmarkSources[hedge.source].name, margin: hedge.margin } : null,
     dominated: o.mode === 'value' ? rows.length - frontier.length - models.filter(m => m.alternativeTo).length : 0,
   };
 }
@@ -264,11 +286,11 @@ export function format(result, { verbose = false, style = (_, text) => text } = 
   const o = result.options;
   const scope = result.eligibility ? `${result.eligibility.enabledCount} models on your plan` : 'published catalog';
   const lines = [`${style('bold', o.mode === 'value' ? 'Best value' : 'Best models')} ${style('dim', `· ${scope} · ${result.source.name}`)}`];
-  if (o.mode === 'value') lines.push(style('dim', `Each numbered row scores higher and costs more than the one above. Indented: alternatives within ${o.margin} points in the same price tier.`));
+  if (o.mode === 'value') lines.push(style('dim', `Each numbered row scores higher and costs more than the one above. Indented: alternatives within ${o.margin} points${result.hedge ? ` (or ${result.hedge.margin} on ${result.hedge.name})` : ''} in the same price tier.`));
   if (result.stale || result.eligibility?.stale) lines.push(style('yellow', 'STALE cached data; run copilot-value refresh'));
-  const rows = [['#', 'MODEL', 'SCORE', 'COST'], ...numbered(result.models).map(([n, m]) => [n, m.alternativeTo ? `  ${m.id}` : m.id, m.score.toFixed(result.source.id === 'aa' ? 1 : 0), `$${m.costUsd.toFixed(3)}`])];
+  const rows = [['#', 'MODEL', 'SCORE', 'COST', ''], ...numbered(result.models).map(([n, m]) => [n, m.alternativeTo ? `  ${m.id}` : m.id, m.score.toFixed(result.source.id === 'aa' ? 1 : 0), `$${m.costUsd.toFixed(3)}`, result.hedge ? m.closeOn?.join('+') ?? '' : ''])];
   const widths = rows[0].map((_, col) => Math.max(...rows.map(row => row[col].length)));
-  const table = rows.map(row => row.map((cell, col) => col < 2 ? cell.padEnd(widths[col]) : cell.padStart(widths[col])));
+  const table = rows.map(row => row.map((cell, col) => col < 2 || col === 4 ? cell.padEnd(widths[col]) : cell.padStart(widths[col])));
   lines.push('', style('dim', table[0].join('  ').trimEnd()), ...table.slice(1).map(([rank, ...rest], i) => result.models[i].alternativeTo
     ? style('dim', `${rank}  ${rest.join('  ')}`.trimEnd())
     : `${style('dim', rank)}  ${rest.join('  ')}`.trimEnd()));

@@ -10,7 +10,12 @@ export async function query(raw = {}, { all = false, modelIds, registryModelIds,
     allowed = eligible.modelIds.filter(id => (!modelIds || modelIds.some(m => m.replace(/^github-copilot\//, '') === id)) && (!registryModelIds || registryModelIds.includes(id)));
   }
   const snapshot = await loadSnapshot({ ...sourceOptions, cache, source: rankingOptions.source });
-  const result = rank(snapshot, rankingOptions, { modelIds: allowed, mappings });
+  // Arena needs no key, so it can always second-guess AA; AA can back up Arena only when a key is set.
+  const other = rankingOptions.source === 'aa' ? 'arena' : process.env.ARTIFICIAL_ANALYSIS_API_KEY ? 'aa' : null;
+  const secondary = rankingOptions.mode === 'value' && rankingOptions.margin && other
+    ? await loadSnapshot({ ...sourceOptions, source: other, cache: sourceOptions.cache ? `${cache}.${other}.json` : defaultCache(other), optional: true })
+    : undefined;
+  const result = rank(snapshot, rankingOptions, { modelIds: allowed, mappings, secondary });
   if (!all) {
     result.scope = 'copilot-subscription';
     result.eligibility = { fetchedAt: eligible.fetchedAt, stale: eligible.stale, source: `${eligible.endpoint}/models`, selection: eligible.selection, enabledCount: eligible.modelIds.length };

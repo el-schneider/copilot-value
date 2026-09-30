@@ -31,14 +31,14 @@ Options: `--source aa|arena`, `--min-score N`, `--margin N` (value alternatives;
 - `aa`: Artificial Analysis Intelligence Index, scale ~0–70. Default when `ARTIFICIAL_ANALYSIS_API_KEY` is set.
 - `arena`: LMArena WebDev Elo (human preference on web-app coding tasks), scale ~1300–1850. Default without a key; needs no signup.
 
-`source` in the result names the active one. Scales differ: never compare scores across sources, and pick `--min-score` for the active scale.
+`source` in the result names the active one. In `value` mode the other source, when available (Arena always; AA only with a key), acts as a second opinion for alternatives: `hedge` names it and its margin, scaled from `--margin` (5 AA ↔ 50 Elo). Offline without its cached data, `hedge` is `null`. Scales differ: never compare scores across sources, and pick `--min-score` for the active scale.
 
 ## Reading the result
 
 - `models[]`: ranked. `id` is the Copilot ID; `dispatchId` is `github-copilot/<id>` for tools taking a provider/model string.
 - `models[].score`, `costUsd`, `aiCredits` (USD × 100), `rates` (per-million-token prices).
 - `models[].benchmark.name`: the exact variant scored, including reasoning effort. Quote it with the score.
-- In `value` mode (the default), `models[]` is the frontier plus close alternatives. Frontier rows: each costs more and scores higher than the previous one. Rows with `alternativeTo: <id>` follow that frontier row: they score within `margin` of it, cost less than the next frontier row, and have no newer same-family model listed (models.dev `family`). At most 3 per row. `total` counts frontier rows; `--top` limits frontier rows. Models not listed are beaten on both; `dominated` counts them, and they are not in `skipped[]`.
+- In `value` mode (the default), `models[]` is the frontier plus close alternatives. Frontier rows: each costs more and scores higher than the previous one. Rows with `alternativeTo: <id>` follow that frontier row: they score within `margin` of it (or, when `hedge` is set, within `hedge.margin` on the second source), cost less than the next frontier row, and have no newer same-family model listed (models.dev `family`). At most 3 per row. `closeOn` lists the sources (`aa`, `arena`) that put the model close; quote it. `total` counts frontier rows; `--top` limits frontier rows. Models not listed are beaten on both; `dominated` counts them, and they are not in `skipped[]`.
 - `skipped[]`: excluded models and why (no price, no benchmark match, workload exceeds limits). Never guess for these; a `--mapping` can fix a missing match.
 - `eligibility`: `enabledCount`, `fetchedAt`, `selection` (`model-picker` or `enabled-policy`).
 - `stale: true`: snapshot older than 6 h. Run `copilot-value refresh` unless offline is required.

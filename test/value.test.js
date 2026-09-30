@@ -69,6 +69,24 @@ test('value alternatives: within margin, same price tier, newest in family, at m
   assert.throws(() => rank(s, { margin: -1 }), /Invalid margin/);
 });
 
+test('a second source can qualify alternatives, with its margin scaled and a per-row tag', () => {
+  const m = (id, usd) => ({ id, cost: { input: usd * 10, output: 0 } });
+  const models = [m('cheap', 0.1), m('mid', 0.3), m('rival-a', 0.3), m('rival-b', 0.3)];
+  const snap = (source, scores) => ({ version: 2, pricingAt: now, models, benchmarks: { source, fetchedAt: now, entries: Object.entries(scores).map(([id, score]) => entry(id, score)) } });
+  const aa = snap('aa', { cheap: 10, mid: 50, 'rival-a': 30, 'rival-b': 47 });
+  const arena = snap('arena', { cheap: 1500, mid: 1700, 'rival-a': 1690, 'rival-b': 1500 });
+  const alts = (raw, secondary) => rank(aa, { source: 'aa', ...raw }, { secondary }).models.filter(m => m.alternativeTo).map(m => [m.id, m.closeOn.join('+')]);
+  assert.deepEqual(alts({}, arena), [['rival-b', 'aa'], ['rival-a', 'arena']]);
+  assert.deepEqual(alts({}), [['rival-b', 'aa']]);
+  assert.deepEqual(alts({ margin: 1 }, arena), [['rival-a', 'arena']]);
+  assert.deepEqual(alts({ margin: 0.5 }, arena), []);
+  const result = rank(aa, { source: 'aa' }, { secondary: arena });
+  assert.deepEqual(result.hedge, { source: 'arena', name: 'LMArena WebDev Elo', margin: 50 });
+  assert.match(format(result), /\n {5}rival-b +47\.0  \$0\.300  aa\n {5}rival-a +30\.0  \$0\.300  arena\n/);
+  assert.equal(rank(aa, { source: 'aa' }).hedge, null);
+  assert.doesNotMatch(format(rank(aa, { source: 'aa' })), / aa\n/);
+});
+
 test('context tiers use total input and strict threshold, not the legacy 200k alias', () => {
   const s = fixture();
   s.models[0].cost.tiers = [{ tier: { type: 'context', size: 272000 }, input: 4, output: 15, cache_read: 0.4, cache_write: 5 }];
@@ -151,6 +169,7 @@ test('arena refresh pages without a key; offline reuses it; other sources and ol
   assert.equal(rank(fresh).models[0].benchmark.name, 'alpha-max');
   assert.deepEqual(await loadSnapshot({ cache, source: 'arena', offline: true }), fresh);
   await assert.rejects(loadSnapshot({ cache, source: 'aa', offline: true }), /No offline aa snapshot/);
+  assert.equal(await loadSnapshot({ cache, source: 'aa', offline: true, optional: true }), undefined);
   await assert.rejects(loadSnapshot({ cache, source: 'aa', refresh: true }), /needs ARTIFICIAL_ANALYSIS_API_KEY/);
   assert.equal(fetches.length, 3);
   const stale = { ...fresh, pricingAt: now - ttl - 1000 };

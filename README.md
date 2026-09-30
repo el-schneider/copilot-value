@@ -56,7 +56,7 @@ copilot-value --json                 # for scripts and agents
 
 Works without any key: scores come from the public [LMArena WebDev](https://lmarena.ai/leaderboard/webdev) leaderboard (human-preference Elo on coding tasks, [CC BY 4.0](https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset)).
 
-Set `ARTIFICIAL_ANALYSIS_API_KEY` ([free](https://artificialanalysis.ai/data-api)) to use the [Artificial Analysis](https://artificialanalysis.ai) Intelligence Index instead. `--source aa|arena` picks one explicitly. Prices come from https://models.dev. Everything is cached for 6 hours; `copilot-value refresh` forces a fetch.
+Set `ARTIFICIAL_ANALYSIS_API_KEY` ([free](https://artificialanalysis.ai/data-api)) to use the [Artificial Analysis](https://artificialanalysis.ai) Intelligence Index instead. Arena then acts as a second opinion: a model it rates close to the frontier also shows up as an alternative, tagged `arena`. `--source aa|arena` picks the ranking source explicitly. Prices come from https://models.dev. Everything is cached for 6 hours; `copilot-value refresh` forces a fetch.
 
 ## Agents
 

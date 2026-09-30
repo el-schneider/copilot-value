@@ -23,6 +23,8 @@ try {
            Each row costs more and scores higher than the one before;
            every model left out is beaten on both. Indented rows are close
            alternatives: within --margin points, same price tier, newest per family.
+           With an AA key, Arena scores can also qualify an alternative; the
+           tag after the row says which source put it close.
   best     Strongest models on your Copilot subscription, cost alongside
   refresh  Re-fetch eligibility, prices and scores
 
@@ -58,7 +60,8 @@ EXAMPLES
 OPTIONS
   --source aa|arena        Score source; default aa if a key is set, else arena
   --min-score N            Exclude scores below N
-  --margin N               Alternatives within N points; default 5 (aa) or 50 (arena); 0 = none
+  --margin N               Show models up to N points below a value row as alternatives;
+                           higher = more alternatives. Default 5 (aa) or 50 (arena); 0 = none
   --input N                Total input, including cache; default 100000
   --cached-input N         Cache-read subset; default 0
   --cache-write N          Cache-write subset; default 0
