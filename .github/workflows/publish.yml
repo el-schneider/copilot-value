@@ -20,8 +20,10 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install -g npm@latest
       - name: Tag must match package.json version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
         run: |
           pkg="v$(node -p "require('./package.json').version")"
-          test "$pkg" = "${{ github.event.release.tag_name }}" || { echo "tag ${{ github.event.release.tag_name }} != $pkg"; exit 1; }
+          test "$pkg" = "$TAG" || { echo "tag $TAG != $pkg"; exit 1; }
       - run: npm test
       - run: npm publish --provenance

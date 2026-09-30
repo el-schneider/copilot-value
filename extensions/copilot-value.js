@@ -21,7 +21,7 @@ export default function (pi) {
     parameters: { ...querySchema, properties: { ...querySchema.properties, all: { type: 'boolean', default: false }, offline: { type: 'boolean', default: false } } },
     async execute(_id, params, signal, _update, ctx) {
       const result = await query(params, ctx, signal);
-      return { content: [{ type: 'text', text: format(result) }], details: result };
+      return { content: [{ type: 'text', text: format(result, { verbose: true }) }], details: result };
     },
   });
 

@@ -134,6 +134,7 @@ test('aa refresh sends the key and scores by intelligence index', async t => {
   t.mock.method(globalThis, 'fetch', async (url, init) => {
     if (url === sources.pricing) return new Response(JSON.stringify({ 'github-copilot': { models: { alpha: model('alpha') } } }));
     assert.equal(init.headers['x-api-key'], 'secret-key');
+    assert.equal(init.redirect, 'error');
     return new Response(JSON.stringify({ data: [{ slug: 'alpha', name: 'Alpha (max)', evaluations: { artificial_analysis_intelligence_index: 55, artificial_analysis_coding_index: null } }] }));
   });
   const result = rank(await loadSnapshot({ cache }));
@@ -148,8 +149,13 @@ test('CLI pretty, JSON, failure and empty-result exits work as subprocesses', as
   const run = (...args) => spawnSync(process.execPath, [cli, ...args, '--cache', cache, '--offline', '--all'], { encoding: 'utf8' });
   const pretty = run();
   assert.equal(pretty.status, 0, pretty.stderr);
-  assert.match(pretty.stdout, /best models · LMArena WebDev Elo/);
-  assert.match(pretty.stdout, /MODEL\s+SCORE\s+USD/);
+  assert.match(pretty.stdout, /^Best models · published catalog · LMArena WebDev Elo\n\n#  MODEL  SCORE    COST\n1  alpha     80  \$0.300\n/);
+  assert.doesNotMatch(pretty.stdout, /CREDITS|Benchmark variants|Z ·/);
+  const narrowed = run('--models', 'alpha,missing', '--min-score', '50');
+  assert.match(narrowed.stdout, /Not ranked: missing \(--verbose for reasons\)/);
+  const verbose = run('--verbose');
+  assert.match(verbose.stdout, /MODEL\s+SCORE\s+USD\s+CREDITS/);
+  assert.match(verbose.stdout, /Benchmark variants:/);
   const json = run('value', '--json');
   assert.equal(json.status, 0, json.stderr);
   assert.deepEqual(JSON.parse(json.stdout).models.map(m => m.dispatchId), ['github-copilot/beta', 'github-copilot/alpha']);

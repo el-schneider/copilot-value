@@ -11,7 +11,7 @@ try {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     ...Object.fromEntries(flags.map(key => [names[key] ?? key, { type: 'string' }])),
     all: { type: 'boolean' }, host: { type: 'string' },
-    json: { type: 'boolean' }, offline: { type: 'boolean' }, help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
+    json: { type: 'boolean' }, verbose: { type: 'boolean' }, offline: { type: 'boolean' }, help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
     cache: { type: 'string' }, mapping: { type: 'string' }, models: { type: 'string' },
   } });
   if (values.version) {
@@ -68,6 +68,7 @@ OPTIONS
   --mapping FILE           JSON object: Copilot ID -> exact benchmark slug
   --cache FILE             Snapshot path (or COPILOT_VALUE_CACHE)
   --offline                Use cached snapshot without network, even if stale
+  --verbose                Also show timestamps, benchmark variants, exclusion reasons, caveats
   --json                   One JSON object on stdout
 
 Scores are benchmarks, not your task; cost is a token estimate, not a bill.
@@ -85,7 +86,7 @@ Exit codes: 0 = results, 1 = error (stderr), 2 = no rankable models.`);
     const modelIds = values.models?.split(',').map(id => id.trim());
     if (modelIds?.some(id => !id)) throw Error('--models cannot contain empty IDs');
     const result = await getRankings(query, { cache: values.cache, host: values.host, offline: values.offline, refresh: command === 'refresh', all: values.all, mappings, modelIds });
-    console.log(values.json ? JSON.stringify(result, null, 2) : format(result));
+    console.log(values.json ? JSON.stringify(result, null, 2) : format(result, { verbose: values.verbose }));
     if (!result.total) process.exitCode = 2;
   }
 } catch (error) {

@@ -106,7 +106,8 @@ async function readOptional(path) {
   catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
 }
 async function fetchJson(url, headers, signal) {
-  const response = await fetch(url, { headers, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) });
+  // Authenticated requests must not follow redirects: fetch keeps custom headers like x-api-key across origins.
+  const response = await fetch(url, { headers, redirect: headers ? 'error' : 'follow', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) });
   if (!response.ok) throw Error(`${url}: HTTP ${response.status}`);
   return response.json();
 }
@@ -209,7 +210,7 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
   };
 }
 
-export function format(result) {
+function formatVerbose(result) {
   const o = result.options;
   const lines = [
     `Copilot ${o.mode === 'value' ? 'value frontier (cheapest first)' : 'best models'} · ${result.source.name}`,
@@ -227,5 +228,25 @@ export function format(result) {
   lines.push('', 'Benchmark variants:', ...result.models.map(m => `  ${m.id}: ${m.benchmark.name}`));
   if (result.skipped.length) lines.push('', `Excluded (${result.skipped.length}):`, ...result.skipped.map(m => `  ${m.id}: ${m.reason}`));
   lines.push('', ...result.caveats, `Scores: ${result.source.url} · Prices: https://models.dev`);
+  return lines.join('\n');
+}
+
+const k = n => `${n / 1000}k`;
+export function format(result, { verbose = false } = {}) {
+  if (verbose) return formatVerbose(result);
+  const o = result.options;
+  const scope = result.eligibility ? `${result.eligibility.enabledCount} models on your plan` : 'published catalog';
+  const lines = [`${o.mode === 'value' ? 'Best value' : 'Best models'} · ${scope} · ${result.source.name}`];
+  if (o.mode === 'value') lines.push('Each row scores higher and costs more than the one above; every unlisted model is beaten on both.');
+  if (result.stale || result.eligibility?.stale) lines.push('STALE cached data; run copilot-value refresh');
+  const rows = [['#', 'MODEL', 'SCORE', 'COST'], ...result.models.map((m, i) => [String(i + 1), m.id, m.score.toFixed(result.source.id === 'aa' ? 1 : 0), `$${m.costUsd.toFixed(3)}`])];
+  const widths = rows[0].map((_, col) => Math.max(...rows.map(row => row[col].length)));
+  lines.push('', ...rows.map(row => row.map((cell, col) => col < 2 ? cell.padEnd(widths[col]) : cell.padStart(widths[col])).join('  ').trimEnd()));
+  if (!result.models.length) lines.push('No rankable models.');
+  const cache = [o.cachedInput && `${k(o.cachedInput)} cached`, o.cacheWrite && `${k(o.cacheWrite)} cache write`].filter(Boolean).join(', ');
+  lines.push('', `Cost per task: ${k(o.input)} input${cache ? ` (${cache})` : ''}, ${k(o.output)} output.`);
+  const unranked = result.skipped.filter(m => !m.reason.startsWith('Below minimum')).map(m => m.id);
+  if (unranked.length) lines.push(`Not ranked: ${unranked.join(', ')} (--verbose for reasons).`);
+  lines.push(`Scores: ${result.source.url} · Prices: https://models.dev`);
   return lines.join('\n');
 }
