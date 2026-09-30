@@ -11,12 +11,12 @@ export default function (pi) {
 
   pi.registerTool({
     name: 'copilot_value', label: 'Copilot Value',
-    description: 'Rank subscription-enabled GitHub Copilot models by AA scores or estimated token cost, using pi OAuth login and Copilot /models. Default scope also intersects pi registry. all=true shows published catalog instead. Returns dispatchId; does not switch models, launch workers, or spend inference credits. offline=true permits timestamped stale data. Top 10 by default (max 100).',
+    description: 'Rank subscription-enabled GitHub Copilot models for coding, using pi OAuth login and Copilot /models. mode=best: strongest first. mode=value: price/score frontier, cheapest first. Scores: Artificial Analysis when ARTIFICIAL_ANALYSIS_API_KEY is set, else LMArena WebDev (no key); source overrides. Default scope also intersects pi registry. all=true shows published catalog instead. Returns dispatchId; does not switch models, launch workers, or spend inference credits. offline=true permits timestamped stale data. Top 10 by default (max 100).',
     promptSnippet: 'Find a GitHub Copilot model by benchmark score or workload value.',
     promptGuidelines: [
       'Use copilot_value when the user explicitly requests GitHub Copilot model recommendations or workers.',
       'copilot_value returns recommendations, not authorization to spend Copilot credits. Use returned dispatchId only after user approval to use Copilot.',
-      'copilot_value value means score per estimated workload dollar; price means cheapest above minScore. Report benchmark variant and token assumptions.',
+      'copilot_value mode=value returns the price/score frontier; with minScore its first row is the cheapest model above the floor. Report score source, benchmark variant and token assumptions.',
     ],
     parameters: { ...querySchema, properties: { ...querySchema.properties, all: { type: 'boolean', default: false }, offline: { type: 'boolean', default: false } } },
     async execute(_id, params, signal, _update, ctx) {
@@ -26,17 +26,17 @@ export default function (pi) {
   });
 
   pi.registerCommand('gh-model', {
-    description: 'Pick a Copilot model for this session: /gh-model [intelligence|coding|value|price]',
+    description: 'Pick a Copilot model for this session: /gh-model [best|value]',
     getArgumentCompletions(prefix) {
-      return ['intelligence', 'coding', 'value', 'price'].filter(s => s.startsWith(prefix)).map(value => ({ value, label: value }));
+      return ['best', 'value'].filter(s => s.startsWith(prefix)).map(value => ({ value, label: value }));
     },
     async handler(args, ctx) {
       if (!ctx.hasUI) throw Error('/gh-model requires interactive UI or RPC dialogs');
       await ctx.waitForIdle();
-      const result = await query({ sort: args.trim() || 'intelligence' }, ctx, ctx.signal);
+      const result = await query({ mode: args.trim() || 'best' }, ctx, ctx.signal);
       if (!result.models.length) { ctx.ui.notify(format(result), 'warning'); return; }
-      const labels = result.models.map(m => `${m.id} · ${m.score} ${m.metric} · $${m.costUsd.toFixed(4)} · ${m.benchmark.name}`);
-      const selected = await ctx.ui.select(`Copilot · ${result.options.sort} · 100k input / 10k output, uncached`, labels);
+      const labels = result.models.map(m => `${m.id} · ${m.score.toFixed(1)} · $${m.costUsd.toFixed(4)} · ${m.benchmark.name}`);
+      const selected = await ctx.ui.select(`Copilot · ${result.options.mode} · ${result.source.name} · 100k input / 10k output, uncached`, labels);
       if (selected === undefined) return;
       const winner = result.models[labels.indexOf(selected)];
       if (!winner) throw Error('Unknown model selection');

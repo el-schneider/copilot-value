@@ -5,11 +5,18 @@ import { randomUUID, createHash } from 'node:crypto';
 
 export const sources = {
   pricing: 'https://models.dev/api.json',
-  benchmarks: 'https://artificialanalysis.ai/api/v2/data/llms/models',
+  aa: 'https://artificialanalysis.ai/api/v2/data/llms/models',
+  arena: 'https://datasets-server.huggingface.co/rows?dataset=lmarena-ai%2Fleaderboard-dataset&config=webdev&split=latest',
   authoritativePricing: 'https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing',
 };
+export const benchmarkSources = {
+  aa: { name: 'Artificial Analysis Intelligence Index', url: 'https://artificialanalysis.ai', caveat: 'AA scores the exact variant shown; scores do not measure pi task success or Copilot speed.' },
+  arena: { name: 'LMArena WebDev Elo', url: 'https://lmarena.ai/leaderboard/webdev', caveat: 'Arena Elo is human preference on web-app tasks (lmarena-ai/leaderboard-dataset, CC BY 4.0). The best-scoring effort variant is used.' },
+};
 export const ttl = 6 * 60 * 60 * 1000;
-export const defaultCache = () => process.env.COPILOT_VALUE_CACHE ?? join(process.env.XDG_CACHE_HOME ?? join(homedir(), '.cache'), 'copilot-value', 'snapshot.json');
+export const defaultSource = () => process.env.ARTIFICIAL_ANALYSIS_API_KEY ? 'aa' : 'arena';
+export const cacheDir = () => join(process.env.XDG_CACHE_HOME ?? join(homedir(), '.cache'), 'copilot-value');
+export const defaultCache = (source = defaultSource()) => process.env.COPILOT_VALUE_CACHE ?? join(cacheDir(), `snapshot-${source}.json`);
 const normalize = (id) => id.toLowerCase().replace(/[._]/g, '-');
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const aliases = {
@@ -18,12 +25,15 @@ const aliases = {
   'claude-opus-4.6': 'claude-opus-4-6-adaptive',
   'claude-haiku-4.5': 'claude-4-5-haiku-reasoning',
 };
+// Arena lists effort/date/harness variants of one model; anything else after the ID (e.g. "-5-max", "-mini") is a different model.
+const arenaVariant = /^(-(minimal|low|medium|high|xhigh|max|thinking|\d{8}))*( \([^)]*\))?$/;
+
 export const querySchema = {
   type: 'object', additionalProperties: false,
   properties: {
-    sort: { type: 'string', enum: ['intelligence', 'coding', 'value', 'price'], default: 'intelligence' },
-    metric: { type: 'string', enum: ['intelligence', 'coding'], default: 'intelligence', description: 'AA publishes coding scores for fewer models; coding excludes the rest' },
-    minScore: { type: 'number', minimum: 0 },
+    mode: { type: 'string', enum: ['best', 'value'], default: 'best', description: 'best: highest score first. value: price/score frontier, cheapest first' },
+    source: { type: 'string', enum: ['aa', 'arena'], description: 'Default: aa when ARTIFICIAL_ANALYSIS_API_KEY is set, else arena (no key needed)' },
+    minScore: { type: 'number', minimum: 0, description: 'Uses the source scale: AA index ~0-70, Arena Elo ~1300-1850' },
     input: { type: 'integer', minimum: 0, description: 'Total input tokens, including cache reads and writes', default: 100000 },
     cachedInput: { type: 'integer', minimum: 0, default: 0 },
     cacheWrite: { type: 'integer', minimum: 0, default: 0 },
@@ -42,17 +52,13 @@ function text(value, label) {
 }
 export function options(raw = {}) {
   for (const key of Object.keys(raw)) if (!(key in querySchema.properties)) throw Error(`Unknown ranking option: ${key}`);
-  const o = { sort: 'intelligence', metric: 'intelligence', minScore: 0, input: 100000, cachedInput: 0, cacheWrite: 0, output: 10000, top: 10, ...raw };
-  for (const key of ['sort', 'metric']) if (!querySchema.properties[key].enum.includes(o[key])) throw Error(`Invalid ${key}: ${o[key]}`);
+  const o = { mode: 'best', source: defaultSource(), minScore: 0, input: 100000, cachedInput: 0, cacheWrite: 0, output: 10000, top: 10, ...raw };
+  for (const key of ['mode', 'source']) if (!querySchema.properties[key].enum.includes(o[key])) throw Error(`Invalid ${key}: ${o[key]}`);
   for (const key of ['input', 'cachedInput', 'cacheWrite', 'output', 'top']) number(o[key], key, true);
   number(o.minScore, 'minScore');
   if (!o.top || o.top > 100) throw Error('top must be 1–100');
   if (o.cachedInput + o.cacheWrite > o.input) throw Error('cachedInput + cacheWrite must not exceed total input');
   if (!o.input && !o.output) throw Error('Workload must contain tokens');
-  if (o.sort === 'coding' || o.sort === 'intelligence') {
-    if (raw.metric !== undefined && raw.metric !== o.sort) throw Error('metric must match score sort; use sort=value or sort=price to choose a metric');
-    o.metric = o.sort;
-  }
   return o;
 }
 
@@ -63,10 +69,11 @@ function validateRates(rates, label) {
   for (const key of ['cache_read', 'cache_write']) if (rates[key] !== undefined) number(rates[key], `${label}.${key}`);
 }
 export function validateSnapshot(s) {
-  if (s?.version !== 1 || !Array.isArray(s.models) || !s.models.length || !Array.isArray(s.benchmarks) || !s.benchmarks.length) throw Error('Invalid snapshot format');
-  for (const key of ['pricingAt', 'benchmarksAt']) {
-    number(s[key], key);
-    if (!s[key] || s[key] > Date.now() + 60000) throw Error(`Invalid ${key}`);
+  const b = s?.benchmarks;
+  if (s?.version !== 2 || !Array.isArray(s.models) || !s.models.length || !(b?.source in benchmarkSources) || !Array.isArray(b.entries) || !b.entries.length) throw Error('Invalid snapshot format');
+  for (const [key, value] of [['pricingAt', s.pricingAt], ['benchmarks.fetchedAt', b.fetchedAt]]) {
+    number(value, key);
+    if (!value || value > Date.now() + 60000) throw Error(`Invalid ${key}`);
   }
   const ids = new Set();
   for (const m of s.models) {
@@ -85,15 +92,11 @@ export function validateSnapshot(s) {
     if (m.limit?.output !== undefined) number(m.limit.output, `${m.id}.output limit`, true);
   }
   const slugs = new Set();
-  for (const b of s.benchmarks) {
-    text(b.slug, 'AA slug'); text(b.name, 'AA name');
-    if (slugs.has(normalize(b.slug))) throw Error(`Ambiguous AA slug: ${b.slug}`);
-    slugs.add(normalize(b.slug));
-    if (!b.evaluations || typeof b.evaluations !== 'object') throw Error(`Missing evaluations: ${b.slug}`);
-    for (const metric of ['coding', 'intelligence']) {
-      const score = b.evaluations[`artificial_analysis_${metric}_index`];
-      if (score != null) number(score, `${b.slug}.${metric}`);
-    }
+  for (const e of b.entries) {
+    text(e.slug, `${b.source} slug`); text(e.name, `${b.source} name`);
+    if (e.score !== null) number(e.score, `${e.slug}.score`);
+    if (b.source === 'aa' && slugs.has(normalize(e.slug))) throw Error(`Ambiguous AA slug: ${e.slug}`);
+    slugs.add(normalize(e.slug));
   }
   return s;
 }
@@ -107,29 +110,35 @@ async function fetchJson(url, headers, signal) {
   if (!response.ok) throw Error(`${url}: HTTP ${response.status}`);
   return response.json();
 }
-export async function loadSnapshot({ cache = defaultCache(), offline = false, refresh = false, aaCache = process.env.AA_MODEL_CACHE, signal } = {}) {
+async function fetchAA(signal) {
+  const aa = await fetchJson(sources.aa, { 'x-api-key': process.env.ARTIFICIAL_ANALYSIS_API_KEY }, signal);
+  if (!Array.isArray(aa?.data)) throw Error('Unexpected Artificial Analysis response');
+  return aa.data.map(b => ({ slug: b.slug, name: b.name, score: b.evaluations?.artificial_analysis_intelligence_index ?? null }));
+}
+// /rows is cached by Hugging Face; /filter can take >25 s or return 500, so filter the category here.
+async function fetchArena(signal) {
+  const page = offset => fetchJson(`${sources.arena}&offset=${offset}&length=100`, undefined, signal).then(p => {
+    if (!Array.isArray(p?.rows) || !Number.isSafeInteger(p.num_rows_total)) throw Error('Unexpected LMArena response');
+    return p;
+  });
+  const first = await page(0);
+  const rest = await Promise.all(Array.from({ length: Math.ceil(first.num_rows_total / 100) - 1 }, (_, i) => page((i + 1) * 100)));
+  return [first, ...rest].flatMap(p => p.rows).map(r => r.row).filter(r => r.category === 'overall')
+    .map(r => ({ slug: r.model_name, name: r.model_name, score: r.rating }));
+}
+export async function loadSnapshot({ source = defaultSource(), cache = defaultCache(source), offline = false, refresh = false, signal } = {}) {
   if (offline && refresh) throw Error('offline and refresh cannot be combined');
-  const existing = refresh ? undefined : await readOptional(cache);
-  if (existing) {
-    validateSnapshot(existing);
-    if (offline || (!refresh && Date.now() - Math.min(existing.pricingAt, existing.benchmarksAt) < ttl)) return existing;
-  }
-  if (offline) throw Error(`No offline snapshot at ${cache}; run copilot-value refresh first`);
-  let aa, benchmarksAt;
-  if (process.env.ARTIFICIAL_ANALYSIS_API_KEY && !aaCache) {
-    aa = await fetchJson(sources.benchmarks, { 'x-api-key': process.env.ARTIFICIAL_ANALYSIS_API_KEY }, signal);
-    benchmarksAt = Date.now();
-  } else {
-    const path = aaCache ?? join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent'), 'aa-models-cache.json');
-    aa = await readOptional(path);
-    if (!aa) throw Error('Set ARTIFICIAL_ANALYSIS_API_KEY or --aa-cache to an existing pi AA cache');
-    benchmarksAt = aa.time;
-    if (!Number.isFinite(benchmarksAt) || Date.now() - benchmarksAt >= ttl) throw Error('AA cache is stale; refresh it in pi or set ARTIFICIAL_ANALYSIS_API_KEY');
-  }
-  const catalog = await fetchJson(sources.pricing, undefined, signal);
+  if (!(source in benchmarkSources)) throw Error(`Invalid source: ${source}`);
+  let existing = refresh ? undefined : await readOptional(cache);
+  if (existing?.version !== 2) existing = undefined;
+  else if (validateSnapshot(existing).benchmarks.source !== source) existing = undefined;
+  if (existing && (offline || Date.now() - Math.min(existing.pricingAt, existing.benchmarks.fetchedAt) < ttl)) return existing;
+  if (offline) throw Error(`No offline ${source} snapshot at ${cache}; run copilot-value refresh first`);
+  if (source === 'aa' && !process.env.ARTIFICIAL_ANALYSIS_API_KEY) throw Error('Source aa needs ARTIFICIAL_ANALYSIS_API_KEY (free at https://artificialanalysis.ai/data-api); omit --source to use LMArena without a key');
+  const [catalog, entries] = await Promise.all([fetchJson(sources.pricing, undefined, signal), source === 'aa' ? fetchAA(signal) : fetchArena(signal)]);
   const models = catalog['github-copilot']?.models;
   if (!models || typeof models !== 'object' || Array.isArray(models)) throw Error('models.dev has no GitHub Copilot catalog');
-  const snapshot = validateSnapshot({ version: 1, pricingAt: Date.now(), benchmarksAt, models: Object.values(models), benchmarks: aa.data });
+  const snapshot = validateSnapshot({ version: 2, pricingAt: Date.now(), models: Object.values(models), benchmarks: { source, fetchedAt: Date.now(), entries } });
   await mkdir(dirname(cache), { recursive: true });
   const temp = `${cache}.${randomUUID()}.tmp`;
   await writeFile(temp, JSON.stringify(snapshot), { mode: 0o600 });
@@ -137,25 +146,33 @@ export async function loadSnapshot({ cache = defaultCache(), offline = false, re
   return snapshot;
 }
 
+function match(entries, source, id, mapped) {
+  const target = normalize(mapped ?? (source === 'aa' ? aliases[id] ?? id : id));
+  const hits = entries.filter(e => {
+    const n = normalize(e.slug);
+    return mapped || source === 'aa' ? n === target : n.startsWith(target) && arenaVariant.test(n.slice(target.length));
+  });
+  return hits.filter(e => e.score !== null).sort((a, b) => b.score - a.score)[0] ?? hits[0];
+}
+
 export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
   validateSnapshot(snapshot);
   const o = options(raw);
-  if (!mappings || typeof mappings !== 'object' || Array.isArray(mappings)) throw Error('Mappings must be an object of Copilot ID to exact AA slug');
+  const { source, entries } = snapshot.benchmarks;
+  if (source !== o.source) throw Error(`Snapshot has ${source} scores, not ${o.source}`);
+  if (!mappings || typeof mappings !== 'object' || Array.isArray(mappings)) throw Error('Mappings must be an object of Copilot ID to exact benchmark slug');
   for (const [id, slug] of Object.entries(mappings)) { text(id, 'mapping id'); text(slug, 'mapping slug'); }
   if (modelIds !== undefined && (!Array.isArray(modelIds) || modelIds.some(id => typeof id !== 'string'))) throw Error('modelIds must be an array of IDs');
   const allowed = modelIds && new Set(modelIds.map(id => id.replace(/^github-copilot\//, '')));
-  const bySlug = new Map(snapshot.benchmarks.map(b => [normalize(b.slug), b]));
-  const skipped = [], models = [];
+  const skipped = [], rows = [];
   for (const m of snapshot.models) {
     if (allowed && !allowed.has(m.id)) continue;
     const reject = reason => skipped.push({ id: m.id, reason });
-    const slug = mappings[m.id] ?? aliases[m.id] ?? normalize(m.id);
-    const aa = bySlug.get(normalize(slug));
-    if (!aa) { reject(`No exact AA match for ${slug}; supply --mapping`); continue; }
-    const scores = { intelligence: aa.evaluations.artificial_analysis_intelligence_index ?? null, coding: aa.evaluations.artificial_analysis_coding_index ?? null };
-    const score = scores[o.metric];
-    if (score == null) { reject(`No ${o.metric} score for ${aa.slug}${o.metric === 'coding' && scores.intelligence != null ? '; rank by intelligence to include it' : ''}`); continue; }
-    if (score < o.minScore) { reject(`Below minimum ${o.metric} score ${o.minScore}`); continue; }
+    const found = match(entries, source, m.id, mappings[m.id]);
+    if (!found) { reject(`No ${source} benchmark match${mappings[m.id] ? ` for mapping ${mappings[m.id]}` : '; supply --mapping'}`); continue; }
+    const score = found.score;
+    if (score === null) { reject(`No ${source} score for ${found.name}`); continue; }
+    if (score < o.minScore) { reject(`Below minimum score ${o.minScore}`); continue; }
     if ((m.limit?.input && o.input > m.limit.input) || (m.limit?.context && o.input + o.output > m.limit.context) || (m.limit?.output && o.output > m.limit.output)) { reject('Workload exceeds model token limits'); continue; }
     let rates = m.cost, threshold = null;
     const tiers = [...(m.cost.tiers ?? [])].sort((a, b) => a.tier.size - b.tier.size);
@@ -164,19 +181,30 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
     if (o.cachedInput && rates.cache_read === undefined) { reject('Missing cache-read rate'); continue; }
     if (o.cacheWrite && rates.cache_write === undefined) { reject('Missing cache-write rate'); continue; }
     const costUsd = ((o.input - o.cachedInput - o.cacheWrite) * rates.input + o.cachedInput * (rates.cache_read ?? 0) + o.cacheWrite * (rates.cache_write ?? 0) + o.output * rates.output) / 1e6;
-    if (!Number.isFinite(costUsd) || costUsd <= 0) { reject('Non-positive or invalid workload cost; value is undefined'); continue; }
-    models.push({ id: m.id, dispatchId: `github-copilot/${m.id}`, benchmark: { slug: aa.slug, name: aa.name }, score, scores, costUsd, aiCredits: costUsd * 100, value: score / costUsd, rates: { input: rates.input, output: rates.output, cacheRead: rates.cache_read ?? null, cacheWrite: rates.cache_write ?? null, threshold }, metric: o.metric });
+    if (!Number.isFinite(costUsd) || costUsd <= 0) { reject('Non-positive or invalid workload cost'); continue; }
+    rows.push({ id: m.id, dispatchId: `github-copilot/${m.id}`, benchmark: { slug: found.slug, name: found.name }, score, costUsd, aiCredits: costUsd * 100, rates: { input: rates.input, output: rates.output, cacheRead: rates.cache_read ?? null, cacheWrite: rates.cache_write ?? null, threshold } });
   }
   if (allowed) for (const id of allowed) if (!snapshot.models.some(m => m.id === id)) skipped.push({ id, reason: 'No Copilot pricing in catalog' });
-  const key = m => o.sort === 'price' ? -m.costUsd : o.sort === 'value' ? m.value : m.score;
-  models.sort((a, b) => key(b) - key(a) || a.costUsd - b.costUsd || compare(a.id, b.id));
+  let models = rows;
+  if (o.mode === 'best') rows.sort((a, b) => b.score - a.score || a.costUsd - b.costUsd || compare(a.id, b.id));
+  else {
+    rows.sort((a, b) => a.costUsd - b.costUsd || b.score - a.score || compare(a.id, b.id));
+    models = [];
+    for (const m of rows) if (m.score > (models.at(-1)?.score ?? -Infinity)) models.push(m);
+  }
   skipped.sort((a, b) => compare(a.id, b.id));
   return {
     snapshotId: createHash('sha256').update(JSON.stringify(snapshot)).digest('hex'),
-    sources, pricingAt: snapshot.pricingAt, benchmarksAt: snapshot.benchmarksAt,
-    stale: Date.now() - Math.min(snapshot.pricingAt, snapshot.benchmarksAt) >= ttl,
+    sources, source: { id: source, ...benchmarkSources[source] },
+    pricingAt: snapshot.pricingAt, benchmarksAt: snapshot.benchmarks.fetchedAt,
+    stale: Date.now() - Math.min(snapshot.pricingAt, snapshot.benchmarks.fetchedAt) >= ttl,
     options: o, scope: allowed ? 'explicit-model-list' : 'published-copilot-catalog',
-    caveats: ['Catalog membership is not account entitlement.', 'Token-billed AI Credits only; not legacy premium-request plans.', 'AA benchmark variants are shown explicitly; scores do not measure pi task success or Copilot speed.', 'Value is benchmark score per estimated workload dollar, not subscription savings.'],
+    caveats: [
+      'Catalog membership is not account entitlement.',
+      'Token-billed AI Credits only; not legacy premium-request plans.',
+      benchmarkSources[source].caveat,
+      ...(o.mode === 'value' ? ['Value lists the price/score frontier: each row costs more and scores higher than the previous one; every omitted model is beaten on both.'] : []),
+    ],
     total: models.length, models: models.slice(0, o.top), skipped,
   };
 }
@@ -184,20 +212,20 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
 export function format(result) {
   const o = result.options;
   const lines = [
-    `Copilot value · ${o.sort} · ${o.metric} score`,
+    `Copilot ${o.mode === 'value' ? 'value frontier (cheapest first)' : 'best models'} · ${result.source.name}`,
     `Input ${o.input} (cached ${o.cachedInput}, write ${o.cacheWrite}) · output ${o.output}`,
-    `Prices ${new Date(result.pricingAt).toISOString()} · AA ${new Date(result.benchmarksAt).toISOString()}${result.stale ? ' · STALE SNAPSHOT' : ''}`,
+    `Prices ${new Date(result.pricingAt).toISOString()} · Scores ${new Date(result.benchmarksAt).toISOString()}${result.stale ? ' · STALE SNAPSHOT' : ''}`,
+    result.eligibility
+      ? `Subscription: ${result.eligibility.enabledCount} enabled · checked ${new Date(result.eligibility.fetchedAt).toISOString()}${result.eligibility.stale ? ' · STALE ELIGIBILITY' : ''}`
+      : 'Scope: published catalog (account eligibility not checked)',
     '',
   ];
-  if (result.eligibility) lines.splice(3, 0, `Subscription: ${result.eligibility.enabledCount} enabled · checked ${new Date(result.eligibility.fetchedAt).toISOString()}${result.eligibility.stale ? ' · STALE ELIGIBILITY' : ''}`);
-  else lines.splice(3, 0, 'Scope: published catalog (account eligibility not checked)');
-  const other = o.metric === 'coding' ? 'intelligence' : 'coding';
-  const rows = [['#', 'MODEL', 'SCORE', other.toUpperCase(), 'USD', 'CREDITS', 'SCORE/$'], ...result.models.map((m, i) => [String(i + 1), m.id, m.score.toFixed(1), m.scores[other]?.toFixed(1) ?? '-', m.costUsd.toFixed(4), m.aiCredits.toFixed(2), m.value.toFixed(1)])];
+  const rows = [['#', 'MODEL', 'SCORE', 'USD', 'CREDITS'], ...result.models.map((m, i) => [String(i + 1), m.id, m.score.toFixed(1), m.costUsd.toFixed(4), m.aiCredits.toFixed(2)])];
   const widths = rows[0].map((_, col) => Math.max(...rows.map(row => row[col].length)));
   lines.push(...rows.map(row => row.map((cell, col) => col < 2 ? cell.padEnd(widths[col]) : cell.padStart(widths[col])).join('  ').trimEnd()));
   if (!result.models.length) lines.push('No rankable models.');
   lines.push('', 'Benchmark variants:', ...result.models.map(m => `  ${m.id}: ${m.benchmark.name}`));
   if (result.skipped.length) lines.push('', `Excluded (${result.skipped.length}):`, ...result.skipped.map(m => `  ${m.id}: ${m.reason}`));
-  lines.push('', ...result.caveats, 'Benchmarks: https://artificialanalysis.ai · Prices: https://models.dev');
+  lines.push('', ...result.caveats, `Scores: ${result.source.url} · Prices: https://models.dev`);
   return lines.join('\n');
 }

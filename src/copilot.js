@@ -1,9 +1,9 @@
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { defaultCache } from './index.js';
+import { cacheDir } from './index.js';
 
 export const eligibilityTtl = 15 * 60 * 1000;
 const headers = {
@@ -61,7 +61,7 @@ export function parseEligibility(raw) {
   return { modelIds: [...new Set(enabled.map(m => m.id))].sort(), selection: policyOnly ? 'enabled-policy' : 'model-picker' };
 }
 
-export async function loadEligibility({ token, host, cache = `${defaultCache()}.eligibility.json`, offline = false, refresh = false, signal } = {}) {
+export async function loadEligibility({ token, host, cache = join(cacheDir(), 'eligibility.json'), offline = false, refresh = false, signal } = {}) {
   if (offline && refresh) throw Error('offline and refresh cannot be combined');
   const endpoint = endpointFor(host);
   token = await resolveToken({ token, host });

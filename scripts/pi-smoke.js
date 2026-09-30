@@ -17,7 +17,7 @@ export default function(pi) {
   }}));
   pi.on('before_provider_request', () => { throw Error('Inference forbidden in smoke test'); });
   pi.registerCommand('cv-smoke', { handler: async (_, ctx) => {
-    const result = await tool.execute('smoke', {sort:'value',top:3}, undefined, undefined, ctx);
+    const result = await tool.execute('smoke', {mode:'value',top:3}, undefined, undefined, ctx);
     pi.sendMessage({customType:'cv-smoke',content:JSON.stringify(result.details),display:true});
   }});
 }`);

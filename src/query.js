@@ -3,13 +3,13 @@ import { loadEligibility } from './copilot.js';
 
 export async function query(raw = {}, { all = false, modelIds, registryModelIds, mappings, ...sourceOptions } = {}) {
   const rankingOptions = options(raw);
-  const cache = sourceOptions.cache ?? defaultCache();
+  const cache = sourceOptions.cache ?? defaultCache(rankingOptions.source);
   let eligible, allowed = modelIds;
   if (!all) {
     eligible = await loadEligibility({ ...sourceOptions, cache: `${cache}.eligibility.json` });
     allowed = eligible.modelIds.filter(id => (!modelIds || modelIds.some(m => m.replace(/^github-copilot\//, '') === id)) && (!registryModelIds || registryModelIds.includes(id)));
   }
-  const snapshot = await loadSnapshot({ ...sourceOptions, cache });
+  const snapshot = await loadSnapshot({ ...sourceOptions, cache, source: rankingOptions.source });
   const result = rank(snapshot, rankingOptions, { modelIds: allowed, mappings });
   if (!all) {
     result.scope = 'copilot-subscription';
