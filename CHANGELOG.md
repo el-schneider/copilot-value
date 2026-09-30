@@ -4,7 +4,7 @@
 
 Breaking: simpler commands, and works without an API key.
 
-- `copilot-value` shows the best models; `copilot-value value` shows the price/score frontier (each row costs more and scores higher; every other model is beaten on both). Replaces `--sort` and `--metric`, and the score-per-dollar ratio, which always favoured the cheapest model.
+- `copilot-value` shows the best value: the price/score frontier (each row costs more and scores higher; every other model is beaten on both). `copilot-value best` shows the strongest models. Replaces `--sort` and `--metric`, and the score-per-dollar ratio, which always favoured the cheapest model.
 - Without `ARTIFICIAL_ANALYSIS_API_KEY`, scores come from the public LMArena WebDev leaderboard. With the key, the Artificial Analysis Intelligence Index is used. `--source aa|arena` overrides.
 - Removed `--aa-cache` and the pi AA cache import.
 - Shorter default output: score and cost per task, one line of unranked models. `--verbose` shows benchmark variants, exclusion reasons, timestamps and caveats. Subtle color in terminals; off when piped or with `NO_COLOR`.

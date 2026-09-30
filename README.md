@@ -1,9 +1,9 @@
 # copilot-value
 
-Answers two questions about the models on your GitHub Copilot subscription: which one is best for coding, and which one is the best value for money. Useful because Copilot offers dozens of models, their prices span more than an order of magnitude, and the picker shows no quality signal.
+Answers two questions about the models on your GitHub Copilot subscription: which one is the best value for money, and which one is best for coding. Useful because Copilot offers dozens of models, their prices span more than an order of magnitude, and the picker shows no quality signal.
 
 ```
-$ copilot-value value
+$ copilot-value
 Best value · 30 models on your plan · LMArena WebDev Elo
 Each row scores higher and costs more than the one above; every unlisted model is beaten on both.
 
@@ -30,10 +30,10 @@ npm install -g copilot-value
 ## Use
 
 ```sh
-copilot-value                        # best models for coding
-copilot-value value                  # best value for money
-copilot-value value --input 200000 --cached-input 150000 --output 8000   # your workload shape
-copilot-value --models claude-opus-5.5,gpt-6-sol   # compare a shortlist
+copilot-value                        # best value for money
+copilot-value best                   # best models for coding
+copilot-value --input 200000 --cached-input 150000 --output 8000   # your workload shape
+copilot-value best --models claude-opus-5.5,gpt-6-sol   # compare a shortlist
 copilot-value --verbose              # plus benchmark variants, exclusion reasons, timestamps
 copilot-value --json                 # for scripts and agents
 ```

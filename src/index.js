@@ -31,7 +31,7 @@ const arenaVariant = /^(-(minimal|low|medium|high|xhigh|max|thinking|\d{8}))*( \
 export const querySchema = {
   type: 'object', additionalProperties: false,
   properties: {
-    mode: { type: 'string', enum: ['best', 'value'], default: 'best', description: 'best: highest score first. value: price/score frontier, cheapest first' },
+    mode: { type: 'string', enum: ['value', 'best'], default: 'value', description: 'value: price/score frontier, cheapest first. best: highest score first' },
     source: { type: 'string', enum: ['aa', 'arena'], description: 'Default: aa when ARTIFICIAL_ANALYSIS_API_KEY is set, else arena (no key needed)' },
     minScore: { type: 'number', minimum: 0, description: 'Uses the source scale: AA index ~0-70, Arena Elo ~1300-1850' },
     input: { type: 'integer', minimum: 0, description: 'Total input tokens, including cache reads and writes', default: 100000 },
@@ -52,7 +52,7 @@ function text(value, label) {
 }
 export function options(raw = {}) {
   for (const key of Object.keys(raw)) if (!(key in querySchema.properties)) throw Error(`Unknown ranking option: ${key}`);
-  const o = { mode: 'best', source: defaultSource(), minScore: 0, input: 100000, cachedInput: 0, cacheWrite: 0, output: 10000, top: 10, ...raw };
+  const o = { mode: 'value', source: defaultSource(), minScore: 0, input: 100000, cachedInput: 0, cacheWrite: 0, output: 10000, top: 10, ...raw };
   for (const key of ['mode', 'source']) if (!querySchema.properties[key].enum.includes(o[key])) throw Error(`Invalid ${key}: ${o[key]}`);
   for (const key of ['input', 'cachedInput', 'cacheWrite', 'output', 'top']) number(o[key], key, true);
   number(o.minScore, 'minScore');

@@ -11,7 +11,7 @@ export default function (pi) {
 
   pi.registerTool({
     name: 'copilot_value', label: 'Copilot Value',
-    description: 'Rank subscription-enabled GitHub Copilot models for coding, using pi OAuth login and Copilot /models. mode=best: strongest first. mode=value: price/score frontier, cheapest first. Scores: Artificial Analysis when ARTIFICIAL_ANALYSIS_API_KEY is set, else LMArena WebDev (no key); source overrides. Default scope also intersects pi registry. all=true shows published catalog instead. Returns dispatchId; does not switch models, launch workers, or spend inference credits. offline=true permits timestamped stale data. Top 10 by default (max 100).',
+    description: 'Rank subscription-enabled GitHub Copilot models for coding, using pi OAuth login and Copilot /models. mode=value (default): price/score frontier, cheapest first. mode=best: strongest first. Scores: Artificial Analysis when ARTIFICIAL_ANALYSIS_API_KEY is set, else LMArena WebDev (no key); source overrides. Default scope also intersects pi registry. all=true shows published catalog instead. Returns dispatchId; does not switch models, launch workers, or spend inference credits. offline=true permits timestamped stale data. Top 10 by default (max 100).',
     promptSnippet: 'Find a GitHub Copilot model by benchmark score or workload value.',
     promptGuidelines: [
       'Use copilot_value when the user explicitly requests GitHub Copilot model recommendations or workers.',
@@ -26,14 +26,14 @@ export default function (pi) {
   });
 
   pi.registerCommand('gh-model', {
-    description: 'Pick a Copilot model for this session: /gh-model [best|value]',
+    description: 'Pick a Copilot model for this session: /gh-model [value|best]',
     getArgumentCompletions(prefix) {
-      return ['best', 'value'].filter(s => s.startsWith(prefix)).map(value => ({ value, label: value }));
+      return ['value', 'best'].filter(s => s.startsWith(prefix)).map(value => ({ value, label: value }));
     },
     async handler(args, ctx) {
       if (!ctx.hasUI) throw Error('/gh-model requires interactive UI or RPC dialogs');
       await ctx.waitForIdle();
-      const result = await query({ mode: args.trim() || 'best' }, ctx, ctx.signal);
+      const result = await query({ mode: args.trim() || 'value' }, ctx, ctx.signal);
       if (!result.models.length) { ctx.ui.notify(format(result), 'warning'); return; }
       const labels = result.models.map(m => `${m.id} · ${m.score.toFixed(1)} · $${m.costUsd.toFixed(4)} · ${m.benchmark.name}`);
       const selected = await ctx.ui.select(`Copilot · ${result.options.mode} · ${result.source.name} · 100k input / 10k output, uncached`, labels);

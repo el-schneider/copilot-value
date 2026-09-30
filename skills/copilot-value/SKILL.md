@@ -14,12 +14,12 @@ Requires `copilot-value` on PATH (`npm install -g copilot-value`) and `gh auth l
 Always use `--json`. One object on stdout; errors as `{"error": "..."}` on stderr. Exit `0` results, `1` error, `2` nothing rankable.
 
 ```sh
-copilot-value --json                       # best models for coding, strongest first
-copilot-value value --json                 # best value: price/score frontier, cheapest first
-copilot-value value --json --min-score N   # first row = cheapest model at or above N
-copilot-value value --json --input 200000 --cached-input 150000 --output 8000   # workload shape
-copilot-value --json --models claude-opus-5.5,gpt-6-sol   # compare a shortlist
-copilot-value --json --all                 # published catalog, ignores eligibility
+copilot-value --json                       # best value: price/score frontier, cheapest first
+copilot-value best --json                  # best models for coding, strongest first
+copilot-value --json --min-score N         # first row = cheapest model at or above N
+copilot-value --json --input 200000 --cached-input 150000 --output 8000   # workload shape
+copilot-value best --json --models claude-opus-5.5,gpt-6-sol   # compare a shortlist
+copilot-value best --json --all            # published catalog, ignores eligibility
 copilot-value --json --offline             # no network; accepts stale snapshot
 copilot-value refresh                      # force-refresh every source
 ```
@@ -38,7 +38,7 @@ Options: `--source aa|arena`, `--min-score N`, `--top 1..100`, `--input/--cached
 - `models[]`: ranked. `id` is the Copilot ID; `dispatchId` is `github-copilot/<id>` for tools taking a provider/model string.
 - `models[].score`, `costUsd`, `aiCredits` (USD × 100), `rates` (per-million-token prices).
 - `models[].benchmark.name`: the exact variant scored, including reasoning effort. Quote it with the score.
-- In `value` mode, `models[]` is the frontier only: each row costs more and scores higher than the previous one. Models not listed are beaten on both by a listed model; they are not in `skipped[]`.
+- In `value` mode (the default), `models[]` is the frontier only: each row costs more and scores higher than the previous one. Models not listed are beaten on both by a listed model; they are not in `skipped[]`.
 - `skipped[]`: excluded models and why (no price, no benchmark match, workload exceeds limits). Never guess for these; a `--mapping` can fix a missing match.
 - `eligibility`: `enabledCount`, `fetchedAt`, `selection` (`model-picker` or `enabled-policy`).
 - `stale: true`: snapshot older than 6 h. Run `copilot-value refresh` unless offline is required.
@@ -63,4 +63,4 @@ Options: `--source aa|arena`, `--min-score N`, `--top 1..100`, `--input/--cached
 
 ## pi extension
 
-`pi install copilot-value` registers a `copilot_value` tool (options in camelCase: `mode` (`best`|`value`), `source`, `minScore`, `input`, `cachedInput`, `cacheWrite`, `output`, `top`, `all`, `offline`) and a `/gh-model [best|value]` command that ranks, then asks before switching the session model. The tool intersects eligibility with pi's registered models and returns `dispatchId`s; it never dispatches anything itself.
+`pi install copilot-value` registers a `copilot_value` tool (options in camelCase: `mode` (`value` default, or `best`), `source`, `minScore`, `input`, `cachedInput`, `cacheWrite`, `output`, `top`, `all`, `offline`) and a `/gh-model [value|best]` command that ranks, then asks before switching the session model. The tool intersects eligibility with pi's registered models and returns `dispatchId`s; it never dispatches anything itself.

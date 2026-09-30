@@ -25,22 +25,22 @@ test('best sorts by score; value keeps only the price/score frontier, cheapest f
   const s = fixture();
   s.models.push(model('gamma', { input: 3, output: 12 }), model('delta', { input: 0.5, output: 1 }));
   s.benchmarks.entries.push(entry('gamma', 60), entry('delta', 40));
-  assert.deepEqual(rank(s).models.map(m => m.id), ['alpha', 'gamma', 'delta', 'beta']);
-  assert.deepEqual(rank(s, { mode: 'value' }).models.map(m => m.id), ['delta', 'alpha']);
+  assert.deepEqual(rank(s, { mode: 'best' }).models.map(m => m.id), ['alpha', 'gamma', 'delta', 'beta']);
+  assert.deepEqual(rank(s).models.map(m => m.id), ['delta', 'alpha']);
   assert.equal(rank(s, { mode: 'value', minScore: 70 }).models[0].id, 'alpha');
   const a = rank(s, { input: 100000, cachedInput: 70000, cacheWrite: 10000, output: 10000 }).models[0];
   assert.equal(a.costUsd, 0.179);
   assert.equal(a.aiCredits, 17.9);
   s.models.push(model('aardvark'));
   s.benchmarks.entries.push(entry('aardvark', 80));
-  assert.equal(rank(s).models[0].id, 'aardvark');
-  assert.deepEqual(rank(s).models, rank({ ...s, models: [...s.models].reverse() }).models);
+  assert.equal(rank(s, { mode: 'best' }).models[0].id, 'aardvark');
+  assert.deepEqual(rank(s, { mode: 'best' }).models, rank({ ...s, models: [...s.models].reverse() }, { mode: 'best' }).models);
 });
 
 test('styling wraps padded cells, so columns stay aligned; default output has no ANSI', () => {
   const result = rank(fixture());
   const plain = format(result), styled = format(result, { style: (f, t) => `<${f}>${t}</${f}>` });
-  assert.match(styled, /^<bold>Best models<\/bold> <dim>· published catalog/);
+  assert.match(styled, /^<bold>Best value<\/bold> <dim>· published catalog/);
   assert.equal(styled.replace(/<\/?\w+>/g, ''), plain);
   assert.doesNotMatch(plain, /\x1b/);
 });
@@ -67,10 +67,10 @@ test('arena matching takes the best effort variant but never a different model',
     entry('gpt-5.4-mini-high', 1397), entry('gpt-5.4-medium (codex-harness)', 1443),
     entry('claude-haiku-4-5-20251001', 1329), entry('gpt-5.6-sol-xhigh (codex-harness)', 1619), entry('gpt-6-sol-max', 1692),
   ];
-  const byId = Object.fromEntries(rank(s).models.map(m => [m.id, m.benchmark.slug]));
+  const byId = Object.fromEntries(rank(s, { mode: 'best' }).models.map(m => [m.id, m.benchmark.slug]));
   assert.deepEqual(byId, { 'claude-opus-5': 'claude-opus-5-max', 'gpt-5.4': 'gpt-5.4-medium (codex-harness)', 'claude-haiku-4.5': 'claude-haiku-4-5-20251001', 'gpt-5.6-sol': 'gpt-5.6-sol-xhigh (codex-harness)' });
   assert.match(rank(s).skipped[0].reason, /No arena benchmark match; supply --mapping/);
-  assert.equal(rank(s, {}, { mappings: { 'gpt-6.1-sol': 'gpt-6-sol-max' } }).total, 5);
+  assert.equal(rank(s, { mode: 'best' }, { mappings: { 'gpt-6.1-sol': 'gpt-6-sol-max' } }).total, 5);
 });
 
 test('aa matching is exact plus deliberate reasoning aliases', () => {
@@ -81,7 +81,7 @@ test('aa matching is exact plus deliberate reasoning aliases', () => {
   assert.equal(result.total, 1);
   assert.equal(result.models[0].benchmark.name, 'Sonnet (Max Effort)');
   assert.match(result.skipped[0].reason, /No aa benchmark match/);
-  assert.equal(rank(s, { source: 'aa' }, { mappings: { 'alpha-mini': 'beta' } }).total, 2);
+  assert.equal(rank(s, { source: 'aa', mode: 'best' }, { mappings: { 'alpha-mini': 'beta' } }).total, 2);
   assert.equal(rank(s, { source: 'aa' }, { modelIds: [] }).total, 0);
   assert.match(rank(s, { source: 'aa' }, { modelIds: ['missing'] }).skipped[0].reason, /No Copilot pricing/);
 });
@@ -155,7 +155,7 @@ test('CLI pretty, JSON, failure and empty-result exits work as subprocesses', as
   const dir = await temp(t), cache = join(dir, 'snapshot.json');
   await writeFile(cache, JSON.stringify(fixture()));
   const run = (...args) => spawnSync(process.execPath, [cli, ...args, '--cache', cache, '--offline', '--all'], { encoding: 'utf8' });
-  const pretty = run();
+  const pretty = run('best');
   assert.equal(pretty.status, 0, pretty.stderr);
   assert.match(pretty.stdout, /^Best models · published catalog · LMArena WebDev Elo\n\n#  MODEL  SCORE    COST\n1  alpha     80  \$0.300\n/);
   assert.doesNotMatch(pretty.stdout, /CREDITS|Benchmark variants|Z ·/);
@@ -164,7 +164,7 @@ test('CLI pretty, JSON, failure and empty-result exits work as subprocesses', as
   const verbose = run('--verbose');
   assert.match(verbose.stdout, /MODEL\s+SCORE\s+USD\s+CREDITS/);
   assert.match(verbose.stdout, /Benchmark variants:/);
-  const json = run('value', '--json');
+  const json = run('--json');
   assert.equal(json.status, 0, json.stderr);
   assert.deepEqual(JSON.parse(json.stdout).models.map(m => m.dispatchId), ['github-copilot/beta', 'github-copilot/alpha']);
   assert.equal(run('--json', '--models', 'missing').status, 2);
@@ -173,7 +173,7 @@ test('CLI pretty, JSON, failure and empty-result exits work as subprocesses', as
   assert.equal(invalid.status, 1);
   assert.equal(invalid.stdout, '');
   assert.match(invalid.stderr, /Invalid input/);
-  assert.match(run('rank').stderr, /Expected best, value or refresh/);
+  assert.match(run('rank').stderr, /Expected value, best or refresh/);
 });
 
 test('help works without credentials and its ranking examples execute against a snapshot', async t => {
@@ -182,7 +182,7 @@ test('help works without credentials and its ranking examples execute against a 
   const help = spawnSync(process.execPath, [cli, '--help', '--cache', join(dir, 'missing-cache.json')], { encoding: 'utf8' });
   assert.equal(help.status, 0, help.stderr);
   const examples = [...help.stdout.matchAll(/^    copilot-value(.*)$/gm)].map(match => match[1].trim());
-  assert(examples.includes('') && examples.includes('value'));
+  assert(examples.includes('') && examples.includes('best'));
   for (const example of examples) {
     const result = spawnSync(process.execPath, [cli, ...example.split(/\s+/).filter(Boolean), '--cache', cache, '--offline', '--all'], { encoding: 'utf8' });
     assert([0, 2].includes(result.status), `${example}: ${result.stderr}`);

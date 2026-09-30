@@ -17,12 +17,12 @@ try {
   if (values.version) {
     console.log(createRequire(import.meta.url)('../package.json').version);
   } else if (values.help) {
-    console.log(`copilot-value [best|value|refresh] [options]
+    console.log(`copilot-value [value|best|refresh] [options]
 
-  best     Strongest models on your Copilot subscription, cost alongside (default)
-  value    Best value for money: the price/score frontier, cheapest first.
+  value    Best value for money (default): the price/score frontier, cheapest first.
            Each row costs more and scores higher than the one before;
            every model left out is beaten on both.
+  best     Strongest models on your Copilot subscription, cost alongside
   refresh  Re-fetch eligibility, prices and scores
 
 Uses your gh CLI login; no inference calls. --all ranks the published catalog without login.
@@ -33,26 +33,26 @@ SCORES
   --source aa|arena overrides. Scales differ; --min-score uses the active one.
 
 EXAMPLES
-  Best models for coding:
+  Best value for money:
     copilot-value
 
-  Best value for money:
-    copilot-value value
+  Best models for coding:
+    copilot-value best
 
   Cheapest model above a quality floor (first row):
-    copilot-value value --min-score 1600 --source arena
+    copilot-value --min-score 1600 --source arena
 
   Your workload: 200k input, 150k of it cache reads, 8k output:
-    copilot-value value --input 200000 --cached-input 150000 --output 8000
+    copilot-value --input 200000 --cached-input 150000 --output 8000
 
   Compare a shortlist, as JSON:
-    copilot-value --models claude-opus-5.5,gpt-6-sol --json
+    copilot-value best --models claude-opus-5.5,gpt-6-sol --json
 
   Published catalog instead of your subscription:
-    copilot-value --all --top 5
+    copilot-value best --all --top 5
 
   Cached data only, no network (stale data is marked):
-    copilot-value value --offline --json
+    copilot-value --offline --json
 
 OPTIONS
   --source aa|arena        Score source; default aa if a key is set, else arena
@@ -75,8 +75,8 @@ Scores are benchmarks, not your task; cost is a token estimate, not a bill.
 Cache: 15 minutes for eligibility, 6 hours for prices and scores.
 Exit codes: 0 = results, 1 = error (stderr), 2 = no rankable models.`);
   } else {
-    const command = positionals[0] ?? 'best';
-    if (positionals.length > 1 || !['best', 'value', 'refresh'].includes(command)) throw Error('Expected best, value or refresh; see --help');
+    const command = positionals[0] ?? 'value';
+    if (positionals.length > 1 || !['value', 'best', 'refresh'].includes(command)) throw Error('Expected value, best or refresh; see --help');
     const query = Object.fromEntries(flags.flatMap(key => {
       const value = values[names[key] ?? key];
       return value === undefined ? [] : [[key, querySchema.properties[key].type === 'string' ? value : value.trim() ? Number(value) : NaN]];
