@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { rank, loadSnapshot, options, sources, ttl } from '../src/index.js';
+import { rank, format, loadSnapshot, options, sources, ttl } from '../src/index.js';
 import extension from '../extensions/copilot-value.js';
 
 delete process.env.ARTIFICIAL_ANALYSIS_API_KEY;
@@ -35,6 +35,14 @@ test('best sorts by score; value keeps only the price/score frontier, cheapest f
   s.benchmarks.entries.push(entry('aardvark', 80));
   assert.equal(rank(s).models[0].id, 'aardvark');
   assert.deepEqual(rank(s).models, rank({ ...s, models: [...s.models].reverse() }).models);
+});
+
+test('styling wraps padded cells, so columns stay aligned; default output has no ANSI', () => {
+  const result = rank(fixture());
+  const plain = format(result), styled = format(result, { style: (f, t) => `<${f}>${t}</${f}>` });
+  assert.match(styled, /^<bold>Best models<\/bold> <dim>· published catalog/);
+  assert.equal(styled.replace(/<\/?\w+>/g, ''), plain);
+  assert.doesNotMatch(plain, /\x1b/);
 });
 
 test('context tiers use total input and strict threshold, not the legacy 200k alias', () => {

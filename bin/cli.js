@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { parseArgs } from 'node:util';
+import { parseArgs, styleText } from 'node:util';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { format, querySchema } from '../src/index.js';
@@ -86,7 +86,7 @@ Exit codes: 0 = results, 1 = error (stderr), 2 = no rankable models.`);
     const modelIds = values.models?.split(',').map(id => id.trim());
     if (modelIds?.some(id => !id)) throw Error('--models cannot contain empty IDs');
     const result = await getRankings(query, { cache: values.cache, host: values.host, offline: values.offline, refresh: command === 'refresh', all: values.all, mappings, modelIds });
-    console.log(values.json ? JSON.stringify(result, null, 2) : format(result, { verbose: values.verbose }));
+    console.log(values.json ? JSON.stringify(result, null, 2) : format(result, { verbose: values.verbose, style: styleText }));
     if (!result.total) process.exitCode = 2;
   }
 } catch (error) {

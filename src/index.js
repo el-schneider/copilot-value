@@ -232,21 +232,24 @@ function formatVerbose(result) {
 }
 
 const k = n => `${n / 1000}k`;
-export function format(result, { verbose = false } = {}) {
+// style defaults to plain text so tool/JSON consumers never get ANSI codes; the CLI passes util.styleText.
+export function format(result, { verbose = false, style = (_, text) => text } = {}) {
   if (verbose) return formatVerbose(result);
   const o = result.options;
   const scope = result.eligibility ? `${result.eligibility.enabledCount} models on your plan` : 'published catalog';
-  const lines = [`${o.mode === 'value' ? 'Best value' : 'Best models'} · ${scope} · ${result.source.name}`];
-  if (o.mode === 'value') lines.push('Each row scores higher and costs more than the one above; every unlisted model is beaten on both.');
-  if (result.stale || result.eligibility?.stale) lines.push('STALE cached data; run copilot-value refresh');
+  const lines = [`${style('bold', o.mode === 'value' ? 'Best value' : 'Best models')} ${style('dim', `· ${scope} · ${result.source.name}`)}`];
+  if (o.mode === 'value') lines.push(style('dim', 'Each row scores higher and costs more than the one above; every unlisted model is beaten on both.'));
+  if (result.stale || result.eligibility?.stale) lines.push(style('yellow', 'STALE cached data; run copilot-value refresh'));
   const rows = [['#', 'MODEL', 'SCORE', 'COST'], ...result.models.map((m, i) => [String(i + 1), m.id, m.score.toFixed(result.source.id === 'aa' ? 1 : 0), `$${m.costUsd.toFixed(3)}`])];
   const widths = rows[0].map((_, col) => Math.max(...rows.map(row => row[col].length)));
-  lines.push('', ...rows.map(row => row.map((cell, col) => col < 2 ? cell.padEnd(widths[col]) : cell.padStart(widths[col])).join('  ').trimEnd()));
+  const table = rows.map(row => row.map((cell, col) => col < 2 ? cell.padEnd(widths[col]) : cell.padStart(widths[col])));
+  lines.push('', style('dim', table[0].join('  ').trimEnd()), ...table.slice(1).map(([rank, ...rest]) => `${style('dim', rank)}  ${rest.join('  ')}`.trimEnd()));
   if (!result.models.length) lines.push('No rankable models.');
   const cache = [o.cachedInput && `${k(o.cachedInput)} cached`, o.cacheWrite && `${k(o.cacheWrite)} cache write`].filter(Boolean).join(', ');
-  lines.push('', `Cost per task: ${k(o.input)} input${cache ? ` (${cache})` : ''}, ${k(o.output)} output.`);
+  const footer = [`Cost per task: ${k(o.input)} input${cache ? ` (${cache})` : ''}, ${k(o.output)} output.`];
   const unranked = result.skipped.filter(m => !m.reason.startsWith('Below minimum')).map(m => m.id);
-  if (unranked.length) lines.push(`Not ranked: ${unranked.join(', ')} (--verbose for reasons).`);
-  lines.push(`Scores: ${result.source.url} · Prices: https://models.dev`);
+  if (unranked.length) footer.push(`Not ranked: ${unranked.join(', ')} (--verbose for reasons).`);
+  footer.push(`Scores: ${result.source.url} · Prices: https://models.dev`);
+  lines.push('', ...footer.map(line => style('dim', line)));
   return lines.join('\n');
 }
