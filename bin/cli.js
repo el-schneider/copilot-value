@@ -24,7 +24,7 @@ Pretty output by default; --json emits one JSON object. No login needed for --he
 
 CHOOSE A RANKING
   "Leading / strongest models"  Sort by intelligence or coding; limit with --top.
-  "Best deal"                   Sort by value (score per estimated workload USD).
+  "Best deal"                   Sort by value (intelligence per estimated workload USD).
   "Cheapest strong model"       Sort by price after setting a --min-score floor.
   "Compare my shortlist"        Use --models with exact IDs from an earlier result.
 
@@ -38,7 +38,10 @@ EXAMPLES
   Intelligence leaders as JSON for an agent or script:
     copilot-value --sort intelligence --top 10 --json
 
-  Best coding score per estimated dollar (can favor smaller models):
+  Best intelligence score per estimated dollar (can favor smaller models):
+    copilot-value --sort value --top 5
+
+  Best coding score per estimated dollar (only models with a coding score):
     copilot-value --sort value --metric coding --top 5
 
   Cheapest models with intelligence score at least 50:
@@ -67,6 +70,9 @@ EXAMPLES
 
 INTERPRET RESULTS
   Scores are Artificial Analysis indices, not definitive model capability.
+  Intelligence is the default metric: AA scores it for nearly every model.
+  AA publishes coding scores for fewer, often older models; ranking by coding
+  excludes the rest (see Excluded). The table shows the other score alongside.
   "Frontier" has no automatic cutoff. List leaders or ask for a quality floor;
   50 intelligence / 70 coding above are examples, not recommended thresholds.
   --top limits rows AFTER ranking/filtering; it does not mean "cheapest of top N".
@@ -74,14 +80,15 @@ INTERPRET RESULTS
   coding/intelligence sorts select their own metric.
   Costs assume 100k uncached input + 10k output unless overridden. Cache mix,
   output length, and reasoning-token usage can change the price comparison.
-  JSON models[] includes id, dispatchId, benchmark variant, score, costUsd,
+  JSON models[] includes id, dispatchId, benchmark variant, score, scores
+  ({intelligence, coding}, null when unpublished), costUsd,
   aiCredits, value, and rates. Check scope, eligibility timestamps, stale,
   eligibility.stale, and skipped. --all does not prove account eligibility.
   Recommendations do not switch models, launch workers, or authorize spending.
 
 OPTIONS
-  --sort coding|intelligence|value|price    Default: coding
-  --metric coding|intelligence             Metric for value/price; default: coding
+  --sort intelligence|coding|value|price    Default: intelligence
+  --metric intelligence|coding             Metric for value/price; default: intelligence
   --min-score N                           Exclude scores below N
   --input N                               Total input, including cache; default: 100000
   --cached-input N                        Cache-read subset; default: 0

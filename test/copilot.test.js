@@ -14,7 +14,7 @@ async function setup(t) {
   const dir = await mkdtemp(join(tmpdir(), 'cv-auth-test-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const cache = join(dir, 'snapshot.json');
-  await writeFile(cache, JSON.stringify({ version: 1, pricingAt: Date.now(), benchmarksAt: Date.now(), models: ['allowed', 'disabled'].map(id => ({ id, cost: { input: 1, output: 2 } })), benchmarks: ['allowed', 'disabled'].map((slug, i) => ({ slug, name: slug, evaluations: { artificial_analysis_coding_index: 50 + i * 30 } })) }));
+  await writeFile(cache, JSON.stringify({ version: 1, pricingAt: Date.now(), benchmarksAt: Date.now(), models: ['allowed', 'disabled'].map(id => ({ id, cost: { input: 1, output: 2 } })), benchmarks: ['allowed', 'disabled'].map((slug, i) => ({ slug, name: slug, evaluations: { artificial_analysis_intelligence_index: 50 + i * 30 } })) }));
   return { dir, cache, token: 'fake-github-token' };
 }
 

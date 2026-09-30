@@ -14,10 +14,10 @@ Requires `copilot-value` on PATH (`npm install -g copilot-value`) and `gh auth l
 Always use `--json`. One object on stdout; errors as `{"error": "..."}` on stderr. Exit `0` results, `1` error, `2` nothing rankable.
 
 ```sh
-copilot-value --json --top 5                         # strongest coding models
-copilot-value --json --sort intelligence --top 5     # general intelligence
+copilot-value --json --top 5                         # strongest models by intelligence (default)
+copilot-value --json --sort coding --top 5           # coding score; excludes models without one
 copilot-value --json --sort value                    # best score per dollar
-copilot-value --json --sort price --min-score 70     # cheapest model above a quality floor
+copilot-value --json --sort price --min-score 45     # cheapest model above a quality floor
 copilot-value --json --input 200000 --cached-input 150000 --output 8000   # workload shape
 copilot-value --json --models gpt-6-astra,claude-opus-5                   # compare a shortlist
 copilot-value --json --all                           # published catalog, ignores eligibility
@@ -25,12 +25,12 @@ copilot-value --json --offline                       # no network; accepts stale
 copilot-value refresh                                # force-refresh every source
 ```
 
-Options: `--sort coding|intelligence|value|price`, `--metric coding|intelligence` (score used by `value`/`price`), `--min-score N`, `--top 1..100`, `--input/--cached-input/--cache-write/--output N` (cached and write are subsets of input), `--models a,b`, `--mapping FILE` (JSON `{copilotId: aaSlug}` to fix a benchmark match), `--host corp.ghe.com`, `--cache FILE`, `--aa-cache FILE`.
+Options: `--sort intelligence|coding|value|price` (default `intelligence`), `--metric intelligence|coding` (score used by `value`/`price`, default `intelligence`), `--min-score N`, `--top 1..100`, `--input/--cached-input/--cache-write/--output N` (cached and write are subsets of input), `--models a,b`, `--mapping FILE` (JSON `{copilotId: aaSlug}` to fix a benchmark match), `--host corp.ghe.com`, `--cache FILE`, `--aa-cache FILE`.
 
 ## Reading the result
 
 - `models[]`: ranked. `id` is the Copilot ID; `dispatchId` is `github-copilot/<id>` for tools taking a provider/model string.
-- `models[].score`, `costUsd`, `aiCredits` (USD × 100), `value` (score per USD), `rates` (per-million-token prices), `metric`.
+- `models[].score` (ranked metric), `scores` (`{intelligence, coding}`, `null` when AA has not published one), `costUsd`, `aiCredits` (USD × 100), `value` (score per USD), `rates` (per-million-token prices), `metric`.
 - `models[].benchmark.name`: the exact AA variant scored, including reasoning effort. Quote it with the score.
 - `skipped[]`: excluded models and why (no price, no benchmark match, workload exceeds limits). Never guess for these; a `--mapping` can fix a missing match.
 - `eligibility`: `enabledCount`, `fetchedAt`, `selection` (`model-picker` or `enabled-policy`).
@@ -40,6 +40,7 @@ Options: `--sort coding|intelligence|value|price`, `--metric coding|intelligence
 ## Rules
 
 - Only `models[]` from a non-`--all` run are usable on this account. `--all` output and `skipped[]` are not.
+- Prefer intelligence. AA publishes coding scores for fewer models, so a coding ranking silently narrows the field; check `skipped[]` before calling a coding result "best". Never compare a coding score with an intelligence score; the scales differ.
 - Scores measure benchmarks, not task success. Token cost is an estimate, not a bill; it ignores subscription fees, included allowances, and remaining quota.
 - Default workload is 100k input / 10k output, no cache hits. Pass the real shape when known.
 - Rankings do not fall back to the catalog on auth errors. On `{"error": ...}` mentioning the token, tell the user to run `gh auth login`.

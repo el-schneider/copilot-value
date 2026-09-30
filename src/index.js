@@ -21,8 +21,8 @@ const aliases = {
 export const querySchema = {
   type: 'object', additionalProperties: false,
   properties: {
-    sort: { type: 'string', enum: ['coding', 'intelligence', 'value', 'price'], default: 'coding' },
-    metric: { type: 'string', enum: ['coding', 'intelligence'], default: 'coding' },
+    sort: { type: 'string', enum: ['intelligence', 'coding', 'value', 'price'], default: 'intelligence' },
+    metric: { type: 'string', enum: ['intelligence', 'coding'], default: 'intelligence', description: 'AA publishes coding scores for fewer models; coding excludes the rest' },
     minScore: { type: 'number', minimum: 0 },
     input: { type: 'integer', minimum: 0, description: 'Total input tokens, including cache reads and writes', default: 100000 },
     cachedInput: { type: 'integer', minimum: 0, default: 0 },
@@ -42,7 +42,7 @@ function text(value, label) {
 }
 export function options(raw = {}) {
   for (const key of Object.keys(raw)) if (!(key in querySchema.properties)) throw Error(`Unknown ranking option: ${key}`);
-  const o = { sort: 'coding', metric: 'coding', minScore: 0, input: 100000, cachedInput: 0, cacheWrite: 0, output: 10000, top: 10, ...raw };
+  const o = { sort: 'intelligence', metric: 'intelligence', minScore: 0, input: 100000, cachedInput: 0, cacheWrite: 0, output: 10000, top: 10, ...raw };
   for (const key of ['sort', 'metric']) if (!querySchema.properties[key].enum.includes(o[key])) throw Error(`Invalid ${key}: ${o[key]}`);
   for (const key of ['input', 'cachedInput', 'cacheWrite', 'output', 'top']) number(o[key], key, true);
   number(o.minScore, 'minScore');
@@ -152,8 +152,9 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
     const slug = mappings[m.id] ?? aliases[m.id] ?? normalize(m.id);
     const aa = bySlug.get(normalize(slug));
     if (!aa) { reject(`No exact AA match for ${slug}; supply --mapping`); continue; }
-    const score = aa.evaluations[`artificial_analysis_${o.metric}_index`];
-    if (score == null) { reject(`No ${o.metric} score for ${aa.slug}`); continue; }
+    const scores = { intelligence: aa.evaluations.artificial_analysis_intelligence_index ?? null, coding: aa.evaluations.artificial_analysis_coding_index ?? null };
+    const score = scores[o.metric];
+    if (score == null) { reject(`No ${o.metric} score for ${aa.slug}${o.metric === 'coding' && scores.intelligence != null ? '; rank by intelligence to include it' : ''}`); continue; }
     if (score < o.minScore) { reject(`Below minimum ${o.metric} score ${o.minScore}`); continue; }
     if ((m.limit?.input && o.input > m.limit.input) || (m.limit?.context && o.input + o.output > m.limit.context) || (m.limit?.output && o.output > m.limit.output)) { reject('Workload exceeds model token limits'); continue; }
     let rates = m.cost, threshold = null;
@@ -164,7 +165,7 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
     if (o.cacheWrite && rates.cache_write === undefined) { reject('Missing cache-write rate'); continue; }
     const costUsd = ((o.input - o.cachedInput - o.cacheWrite) * rates.input + o.cachedInput * (rates.cache_read ?? 0) + o.cacheWrite * (rates.cache_write ?? 0) + o.output * rates.output) / 1e6;
     if (!Number.isFinite(costUsd) || costUsd <= 0) { reject('Non-positive or invalid workload cost; value is undefined'); continue; }
-    models.push({ id: m.id, dispatchId: `github-copilot/${m.id}`, benchmark: { slug: aa.slug, name: aa.name }, score, costUsd, aiCredits: costUsd * 100, value: score / costUsd, rates: { input: rates.input, output: rates.output, cacheRead: rates.cache_read ?? null, cacheWrite: rates.cache_write ?? null, threshold }, metric: o.metric });
+    models.push({ id: m.id, dispatchId: `github-copilot/${m.id}`, benchmark: { slug: aa.slug, name: aa.name }, score, scores, costUsd, aiCredits: costUsd * 100, value: score / costUsd, rates: { input: rates.input, output: rates.output, cacheRead: rates.cache_read ?? null, cacheWrite: rates.cache_write ?? null, threshold }, metric: o.metric });
   }
   if (allowed) for (const id of allowed) if (!snapshot.models.some(m => m.id === id)) skipped.push({ id, reason: 'No Copilot pricing in catalog' });
   const key = m => o.sort === 'price' ? -m.costUsd : o.sort === 'value' ? m.value : m.score;
@@ -190,7 +191,8 @@ export function format(result) {
   ];
   if (result.eligibility) lines.splice(3, 0, `Subscription: ${result.eligibility.enabledCount} enabled · checked ${new Date(result.eligibility.fetchedAt).toISOString()}${result.eligibility.stale ? ' · STALE ELIGIBILITY' : ''}`);
   else lines.splice(3, 0, 'Scope: published catalog (account eligibility not checked)');
-  const rows = [['#', 'MODEL', 'SCORE', 'USD', 'CREDITS', 'SCORE/$'], ...result.models.map((m, i) => [String(i + 1), m.id, m.score.toFixed(1), m.costUsd.toFixed(4), m.aiCredits.toFixed(2), m.value.toFixed(1)])];
+  const other = o.metric === 'coding' ? 'intelligence' : 'coding';
+  const rows = [['#', 'MODEL', 'SCORE', other.toUpperCase(), 'USD', 'CREDITS', 'SCORE/$'], ...result.models.map((m, i) => [String(i + 1), m.id, m.score.toFixed(1), m.scores[other]?.toFixed(1) ?? '-', m.costUsd.toFixed(4), m.aiCredits.toFixed(2), m.value.toFixed(1)])];
   const widths = rows[0].map((_, col) => Math.max(...rows.map(row => row[col].length)));
   lines.push(...rows.map(row => row.map((cell, col) => col < 2 ? cell.padEnd(widths[col]) : cell.padStart(widths[col])).join('  ').trimEnd()));
   if (!result.models.length) lines.push('No rankable models.');

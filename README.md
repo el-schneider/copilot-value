@@ -5,12 +5,12 @@ Ranks the models available on your GitHub Copilot subscription by [Artificial An
 ```
 $ copilot-value --all --top 5
 
-#  MODEL             SCORE     USD  CREDITS  SCORE/$
-1  claude-fable-5.1   81.6  1.5000   150.00     54.4
-2  claude-opus-5      78.0  0.7500    75.00    104.0
-3  gpt-5.6-sol        77.4  0.6000    60.00    129.0
-4  gpt-6-astra        76.9  1.5000   150.00     51.3
-5  grok-4.6           76.8  0.2600    26.00    295.4
+#  MODEL              SCORE  CODING     USD  CREDITS  SCORE/$
+1  claude-opus-5.5     57.6       -  0.6000    60.00     96.0
+2  claude-sonnet-5.5   56.0       -  0.3000    30.00    186.7
+3  claude-fable-5.1    53.4    81.6  1.5000   150.00     35.6
+4  gpt-6-astra         52.7    76.9  1.5000   150.00     35.1
+5  gpt-6.1-sol         51.8       -  0.3000    30.00    172.7
 ```
 
 Without `--all` the list contains only models enabled on your subscription.
@@ -28,15 +28,18 @@ npm install -g copilot-value
 ## Use
 
 ```sh
-copilot-value                                    # coding score, top 10
+copilot-value                                    # intelligence score, top 10
+copilot-value --sort coding                      # coding score; only models AA scored for coding
 copilot-value --sort value                       # score per dollar
-copilot-value --sort price --min-score 70        # cheapest above a quality bar
+copilot-value --sort price --min-score 45        # cheapest above a quality bar
 copilot-value --input 200000 --cached-input 150000 --output 8000   # your workload shape
 copilot-value --models gpt-6-astra,claude-opus-5 # compare a shortlist
 copilot-value --json                             # for scripts and agents
 ```
 
 `--help` lists everything else. Prices come from https://models.dev, scores from Artificial Analysis; both cache for 6 hours (`refresh` forces it). Scores are benchmarks, not your task, and cost is a token estimate, not a bill.
+
+Intelligence is the default metric because Artificial Analysis publishes it for nearly every model. Coding scores often lag for new releases, so `--sort coding` lists those models under "Excluded" instead of ranking them.
 
 ## Agents
 

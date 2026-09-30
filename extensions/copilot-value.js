@@ -26,14 +26,14 @@ export default function (pi) {
   });
 
   pi.registerCommand('gh-model', {
-    description: 'Pick a Copilot model for this session: /gh-model [coding|intelligence|value|price]',
+    description: 'Pick a Copilot model for this session: /gh-model [intelligence|coding|value|price]',
     getArgumentCompletions(prefix) {
-      return ['coding', 'intelligence', 'value', 'price'].filter(s => s.startsWith(prefix)).map(value => ({ value, label: value }));
+      return ['intelligence', 'coding', 'value', 'price'].filter(s => s.startsWith(prefix)).map(value => ({ value, label: value }));
     },
     async handler(args, ctx) {
       if (!ctx.hasUI) throw Error('/gh-model requires interactive UI or RPC dialogs');
       await ctx.waitForIdle();
-      const result = await query({ sort: args.trim() || 'coding' }, ctx, ctx.signal);
+      const result = await query({ sort: args.trim() || 'intelligence' }, ctx, ctx.signal);
       if (!result.models.length) { ctx.ui.notify(format(result), 'warning'); return; }
       const labels = result.models.map(m => `${m.id} · ${m.score} ${m.metric} · $${m.costUsd.toFixed(4)} · ${m.benchmark.name}`);
       const selected = await ctx.ui.select(`Copilot · ${result.options.sort} · 100k input / 10k output, uncached`, labels);

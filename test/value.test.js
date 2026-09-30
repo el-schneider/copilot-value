@@ -9,7 +9,7 @@ import { rank, loadSnapshot, sources, ttl } from '../src/index.js';
 import extension from '../extensions/copilot-value.js';
 
 const now = Date.now();
-const benchmark = (slug, score, name = slug) => ({ slug, name, evaluations: { artificial_analysis_coding_index: score, artificial_analysis_intelligence_index: 20 } });
+const benchmark = (slug, score, name = slug) => ({ slug, name, evaluations: { artificial_analysis_coding_index: score, artificial_analysis_intelligence_index: score } });
 const model = (id, cost = { input: 2, output: 10, cache_read: 0.2, cache_write: 2.5 }) => ({ id, cost, limit: { context: 1000000, output: 100000 } });
 const fixture = () => ({ version: 1, pricingAt: now, benchmarksAt: now, models: [model('alpha'), model('beta', { input: 1, output: 2 })], benchmarks: [benchmark('alpha', 80), benchmark('beta', 40)] });
 
@@ -64,10 +64,22 @@ test('bad inputs fail loudly; absent scores/rates are excluded, never invented',
   const s = fixture();
   for (const raw of [{ input: -1 }, { input: NaN }, { top: 0 }, { top: 1.5 }, { sort: 'oops' }, { cachedInput: 100001 }, { output: Infinity }, { input: 0, output: 0 }, { minScore: null }]) assert.throws(() => rank(s, raw));
   assert.equal(rank(s, { cachedInput: 10 }).skipped[0].id, 'beta');
-  s.benchmarks[0].evaluations.artificial_analysis_coding_index = null;
+  s.benchmarks[0].evaluations.artificial_analysis_intelligence_index = null;
   assert.equal(rank(s).models[0].id, 'beta');
   s.models[0].cost.input = '2';
   assert.throws(() => rank(s), /Invalid alpha.input/);
+});
+
+test('intelligence is the default metric; a missing coding score excludes only coding rankings', () => {
+  const s = fixture();
+  s.benchmarks[0].evaluations.artificial_analysis_coding_index = null;
+  const byDefault = rank(s);
+  assert.equal(byDefault.options.metric, 'intelligence');
+  assert.deepEqual(byDefault.models.map(m => m.id), ['alpha', 'beta']);
+  assert.deepEqual(byDefault.models[0].scores, { intelligence: 80, coding: null });
+  const coding = rank(s, { sort: 'coding' });
+  assert.deepEqual(coding.models.map(m => m.id), ['beta']);
+  assert.match(coding.skipped[0].reason, /No coding score.*rank by intelligence/);
 });
 
 test('refresh -> disk -> offline preserves provenance and never calls network offline', async t => {
@@ -102,7 +114,7 @@ test('CLI pretty, JSON, failure and empty-result exits work as subprocesses', as
   const run = (...args) => spawnSync(process.execPath, [cli, '--cache', cache, '--offline', '--all', ...args], { encoding: 'utf8' });
   const pretty = run();
   assert.equal(pretty.status, 0, pretty.stderr);
-  assert.match(pretty.stdout, /MODEL\s+SCORE\s+USD/);
+  assert.match(pretty.stdout, /MODEL\s+SCORE\s+CODING\s+USD/);
   const json = run('--json', '--sort', 'value');
   assert.equal(json.status, 0, json.stderr);
   assert.equal(JSON.parse(json.stdout).models[0].dispatchId, 'github-copilot/beta');
