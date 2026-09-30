@@ -35,6 +35,7 @@ export const querySchema = {
     source: { type: 'string', enum: ['aa', 'arena'], description: 'Default: aa when ARTIFICIAL_ANALYSIS_API_KEY is set, else arena (no key needed)' },
     minScore: { type: 'number', minimum: 0, description: 'Uses the source scale: AA index ~0-70, Arena Elo ~1300-1850' },
     margin: { type: 'number', minimum: 0, description: 'value mode: show close alternatives within this many score points of a frontier model. Default 5 (aa) or 50 (arena); 0 = strict frontier' },
+    allVersions: { type: 'boolean', default: false, description: 'value mode: also show older models of a family whose newer model is listed' },
     input: { type: 'integer', minimum: 0, description: 'Total input tokens, including cache reads and writes', default: 100000 },
     cachedInput: { type: 'integer', minimum: 0, default: 0 },
     cacheWrite: { type: 'integer', minimum: 0, default: 0 },
@@ -53,10 +54,11 @@ function text(value, label) {
 }
 export function options(raw = {}) {
   for (const key of Object.keys(raw)) if (!(key in querySchema.properties)) throw Error(`Unknown ranking option: ${key}`);
-  const o = { mode: 'value', source: defaultSource(), minScore: 0, input: 100000, cachedInput: 0, cacheWrite: 0, output: 10000, top: 10, ...raw };
+  const o = { mode: 'value', source: defaultSource(), minScore: 0, allVersions: false, input: 100000, cachedInput: 0, cacheWrite: 0, output: 10000, top: 10, ...raw };
   for (const key of ['mode', 'source']) if (!querySchema.properties[key].enum.includes(o[key])) throw Error(`Invalid ${key}: ${o[key]}`);
   for (const key of ['input', 'cachedInput', 'cacheWrite', 'output', 'top']) number(o[key], key, true);
   number(o.minScore, 'minScore');
+  if (typeof o.allVersions !== 'boolean') throw Error('Invalid allVersions: expected boolean');
   o.margin = number(o.margin ?? benchmarkSources[o.source].margin, 'margin');
   if (!o.top || o.top > 100) throw Error('top must be 1–100');
   if (o.cachedInput + o.cacheWrite > o.input) throw Error('cachedInput + cacheWrite must not exceed total input');
@@ -172,7 +174,7 @@ function gapsFor(rows, score) {
 
 // Scores are noisy, prices are not: a model just below the frontier on any source may be as good in practice.
 // Alternatives stay in their frontier row's price tier, and an older model is dropped when a newer one of its family is listed.
-function alternativesFor(rows, frontier, catalog, sources) {
+function alternativesFor(rows, frontier, catalog, sources, allVersions) {
   const onFrontier = new Set(frontier.map(m => m.id));
   const tests = sources.map(t => ({ ...t, gap: gapsFor(rows, t.score) }));
   const candidates = rows.filter(m => !onFrontier.has(m.id)).flatMap(m => {
@@ -183,7 +185,7 @@ function alternativesFor(rows, frontier, catalog, sources) {
       ? [{ ...m, alternativeTo: parent.id, closeOn, gap: parent.score - m.score }] : [];
   });
   const listed = [...frontier, ...candidates].map(m => catalog.get(m.id));
-  const superseded = m => listed.some(o => o.family && o.family === m.family && o.release_date > m.release_date);
+  const superseded = m => !allVersions && listed.some(o => o.family && o.family === m.family && o.release_date > m.release_date);
   const shown = [];
   for (const c of candidates.sort((a, b) => a.gap - b.gap || a.costUsd - b.costUsd || compare(a.id, b.id)))
     if (!superseded(catalog.get(c.id)) && shown.filter(s => s.alternativeTo === c.alternativeTo).length < 3) shown.push(c);
@@ -235,7 +237,7 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {}, secondary } 
       hedge = { source: id, margin: benchmarkSources[id].margin * o.margin / benchmarkSources[source].margin, score };
     }
     const tests = [{ source, margin: o.margin, score: new Map(rows.map(r => [r.id, r.score])) }, ...(hedge ? [hedge] : [])];
-    const alternatives = o.margin ? alternativesFor(rows, frontier, new Map(snapshot.models.map(m => [m.id, m])), tests) : [];
+    const alternatives = o.margin ? alternativesFor(rows, frontier, new Map(snapshot.models.map(m => [m.id, m])), tests, o.allVersions) : [];
     models = frontier.slice(0, o.top).flatMap(f => [f, ...alternatives.filter(a => a.alternativeTo === f.id)]);
   }
   skipped.sort((a, b) => compare(a.id, b.id));

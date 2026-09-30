@@ -64,6 +64,8 @@ test('value alternatives: within margin, same price tier, newest in family, at m
   assert.equal(result.dominated, 4);
   assert.deepEqual(rank(s, { margin: 0 }).models.map(m => m.id), ['cheap', 'mid']);
   assert.deepEqual(rank(s, { top: 1 }).models.map(m => m.id), ['cheap']);
+  assert.deepEqual(rank(s, { allVersions: true }).models.filter(m => m.alternativeTo === 'cheap').map(m => m.id), ['cheap-old']);
+  assert.throws(() => rank(s, { allVersions: 'yes' }), /Invalid allVersions/);
   assert.equal(rank(s, { margin: 5 }).models.length, 5);
   assert.match(format(result), /\n1  cheap +100  \$0\.100\n2  mid +150  \$0\.300\n {5}rival1 +149  \$0\.300\n/);
   assert.throws(() => rank(s, { margin: -1 }), /Invalid margin/);
@@ -211,6 +213,7 @@ test('CLI pretty, JSON, failure and empty-result exits work as subprocesses', as
   assert.equal(json.status, 0, json.stderr);
   assert.deepEqual(JSON.parse(json.stdout).models.map(m => m.dispatchId), ['github-copilot/beta', 'github-copilot/alpha']);
   assert.equal(run('--json', '--models', 'missing').status, 2);
+  assert.equal(JSON.parse(run('--json', '--all-versions').stdout).options.allVersions, true);
   assert.equal(run('--source', 'aa').status, 1);
   const invalid = run('--input=-1', '--json');
   assert.equal(invalid.status, 1);

@@ -24,7 +24,7 @@ copilot-value --json --offline             # no network; accepts stale snapshot
 copilot-value refresh                      # force-refresh every source
 ```
 
-Options: `--source aa|arena`, `--min-score N`, `--margin N` (value alternatives; default 5 for aa, 50 for arena; 0 = none), `--top 1..100`, `--input/--cached-input/--cache-write/--output N` (cached and write are subsets of input), `--models a,b`, `--mapping FILE` (JSON `{copilotId: benchmarkSlug}` to fix a match), `--host corp.ghe.com`, `--cache FILE`.
+Options: `--source aa|arena`, `--min-score N`, `--margin N` (value alternatives; default 5 for aa, 50 for arena; 0 = none), `--all-versions` (keep older family members as alternatives), `--top 1..100`, `--input/--cached-input/--cache-write/--output N` (cached and write are subsets of input), `--models a,b`, `--mapping FILE` (JSON `{copilotId: benchmarkSlug}` to fix a match), `--host corp.ghe.com`, `--cache FILE`.
 
 ## Score sources
 
@@ -38,7 +38,7 @@ Options: `--source aa|arena`, `--min-score N`, `--margin N` (value alternatives;
 - `models[]`: ranked. `id` is the Copilot ID; `dispatchId` is `github-copilot/<id>` for tools taking a provider/model string.
 - `models[].score`, `costUsd`, `aiCredits` (USD × 100), `rates` (per-million-token prices).
 - `models[].benchmark.name`: the exact variant scored, including reasoning effort. Quote it with the score.
-- In `value` mode (the default), `models[]` is the frontier plus close alternatives. Frontier rows: each costs more and scores higher than the previous one. Rows with `alternativeTo: <id>` follow that frontier row: they score within `margin` of it (or, when `hedge` is set, within `hedge.margin` on the second source), cost less than the next frontier row, and have no newer same-family model listed (models.dev `family`). At most 3 per row. `closeOn` lists the sources (`aa`, `arena`) that put the model close; quote it. `total` counts frontier rows; `--top` limits frontier rows. Models not listed are beaten on both; `dominated` counts them, and they are not in `skipped[]`.
+- In `value` mode (the default), `models[]` is the frontier plus close alternatives. Frontier rows: each costs more and scores higher than the previous one. Rows with `alternativeTo: <id>` follow that frontier row: they score within `margin` of it (or, when `hedge` is set, within `hedge.margin` on the second source), cost less than the next frontier row, and have no newer same-family model listed (models.dev `family`; `--all-versions` keeps them). At most 3 per row. `closeOn` lists the sources (`aa`, `arena`) that put the model close; quote it. `total` counts frontier rows; `--top` limits frontier rows. Models not listed are beaten on both; `dominated` counts them, and they are not in `skipped[]`.
 - `skipped[]`: excluded models and why (no price, no benchmark match, workload exceeds limits). Never guess for these; a `--mapping` can fix a missing match.
 - `eligibility`: `enabledCount`, `fetchedAt`, `selection` (`model-picker` or `enabled-policy`).
 - `stale: true`: snapshot older than 6 h. Run `copilot-value refresh` unless offline is required.
@@ -63,4 +63,4 @@ Options: `--source aa|arena`, `--min-score N`, `--margin N` (value alternatives;
 
 ## pi extension
 
-`pi install copilot-value` registers a `copilot_value` tool (options in camelCase: `mode` (`value` default, or `best`), `source`, `minScore`, `margin`, `input`, `cachedInput`, `cacheWrite`, `output`, `top`, `all`, `offline`) and a `/gh-model [value|best]` command that ranks, then asks before switching the session model. The tool intersects eligibility with pi's registered models and returns `dispatchId`s; it never dispatches anything itself.
+`pi install copilot-value` registers a `copilot_value` tool (options in camelCase: `mode` (`value` default, or `best`), `source`, `minScore`, `margin`, `allVersions`, `input`, `cachedInput`, `cacheWrite`, `output`, `top`, `all`, `offline`) and a `/gh-model [value|best]` command that ranks, then asks before switching the session model. The tool intersects eligibility with pi's registered models and returns `dispatchId`s; it never dispatches anything itself.

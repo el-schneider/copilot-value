@@ -5,11 +5,11 @@ import { createRequire } from 'node:module';
 import { format, querySchema } from '../src/index.js';
 import { query as getRankings } from '../src/query.js';
 
-const names = { minScore: 'min-score', cachedInput: 'cached-input', cacheWrite: 'cache-write' };
+const names = { minScore: 'min-score', cachedInput: 'cached-input', cacheWrite: 'cache-write', allVersions: 'all-versions' };
 const flags = Object.keys(querySchema.properties).filter(key => key !== 'mode');
 try {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-    ...Object.fromEntries(flags.map(key => [names[key] ?? key, { type: 'string' }])),
+    ...Object.fromEntries(flags.map(key => [names[key] ?? key, { type: querySchema.properties[key].type === 'boolean' ? 'boolean' : 'string' }])),
     all: { type: 'boolean' }, host: { type: 'string' },
     json: { type: 'boolean' }, verbose: { type: 'boolean' }, offline: { type: 'boolean' }, help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
     cache: { type: 'string' }, mapping: { type: 'string' }, models: { type: 'string' },
@@ -62,6 +62,7 @@ OPTIONS
   --min-score N            Exclude scores below N
   --margin N               Show models up to N points below a value row as alternatives;
                            higher = more alternatives. Default 5 (aa) or 50 (arena); 0 = none
+  --all-versions           Also show older models of a family whose newer model is listed
   --input N                Total input, including cache; default 100000
   --cached-input N         Cache-read subset; default 0
   --cache-write N          Cache-write subset; default 0
@@ -84,7 +85,7 @@ Exit codes: 0 = results, 1 = error (stderr), 2 = no rankable models.`);
     if (positionals.length > 1 || !['value', 'best', 'refresh'].includes(command)) throw Error('Expected value, best or refresh; see --help');
     const query = Object.fromEntries(flags.flatMap(key => {
       const value = values[names[key] ?? key];
-      return value === undefined ? [] : [[key, querySchema.properties[key].type === 'string' ? value : value.trim() ? Number(value) : NaN]];
+      return value === undefined ? [] : [[key, typeof value === 'boolean' || querySchema.properties[key].type === 'string' ? value : value.trim() ? Number(value) : NaN]];
     }));
     if (command !== 'refresh') query.mode = command;
     const mappings = values.mapping ? JSON.parse(await readFile(values.mapping, 'utf8')) : {};

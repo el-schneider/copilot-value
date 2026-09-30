@@ -45,6 +45,7 @@ copilot-value                        # best value for money
 copilot-value best                   # best models for coding
 copilot-value --input 200000 --cached-input 150000 --output 8000   # your workload shape
 copilot-value --margin 0             # strict frontier, no alternatives
+copilot-value --all-versions         # include older models of a listed family
 copilot-value best --models claude-opus-5.5,gpt-6-sol   # compare a shortlist
 copilot-value --verbose              # plus benchmark variants, exclusion reasons, timestamps
 copilot-value --json                 # for scripts and agents

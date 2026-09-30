@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `--all-versions` keeps older models of a family as value alternatives, even when a newer model of the family is listed.
+
 ## 0.4.0
 
 - `value` shows up to 3 close alternatives under each frontier row, dimmed and indented. An alternative scores within `--margin` of the frontier model (default 5 AA points or 50 Arena Elo), costs less than the next frontier row, and is dropped when a newer model of its family is listed. `--margin 0` shows the strict frontier.
