@@ -207,6 +207,7 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
       ...(o.mode === 'value' ? ['Value lists the price/score frontier: each row costs more and scores higher than the previous one; every omitted model is beaten on both.'] : []),
     ],
     total: models.length, models: models.slice(0, o.top), skipped,
+    dominated: rows.length - models.length,
   };
 }
 
@@ -247,6 +248,7 @@ export function format(result, { verbose = false, style = (_, text) => text } = 
   if (!result.models.length) lines.push('No rankable models.');
   const cache = [o.cachedInput && `${k(o.cachedInput)} cached`, o.cacheWrite && `${k(o.cacheWrite)} cache write`].filter(Boolean).join(', ');
   const footer = [`Cost per task: ${k(o.input)} input${cache ? ` (${cache})` : ''}, ${k(o.output)} output.`];
+  if (result.dominated) footer.push(`${result.dominated} more models omitted: each is beaten on price and score by a listed model (copilot-value best lists all).`);
   const unranked = result.skipped.filter(m => !m.reason.startsWith('Below minimum')).map(m => m.id);
   if (unranked.length) footer.push(`Not ranked: ${unranked.join(', ')} (--verbose for reasons).`);
   footer.push(`Scores: ${result.source.url} · Prices: https://models.dev`);

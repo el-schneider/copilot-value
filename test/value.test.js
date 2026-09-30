@@ -27,6 +27,10 @@ test('best sorts by score; value keeps only the price/score frontier, cheapest f
   s.benchmarks.entries.push(entry('gamma', 60), entry('delta', 40));
   assert.deepEqual(rank(s, { mode: 'best' }).models.map(m => m.id), ['alpha', 'gamma', 'delta', 'beta']);
   assert.deepEqual(rank(s).models.map(m => m.id), ['delta', 'alpha']);
+  assert.equal(rank(s).dominated, 2);
+  assert.equal(rank(s, { mode: 'best' }).dominated, 0);
+  assert.match(format(rank(s)), /2 more models omitted: each is beaten on price and score/);
+  assert.doesNotMatch(format(rank(s, { mode: 'best' })), /omitted/);
   assert.equal(rank(s, { mode: 'value', minScore: 70 }).models[0].id, 'alpha');
   const a = rank(s, { input: 100000, cachedInput: 70000, cacheWrite: 10000, output: 10000 }).models[0];
   assert.equal(a.costUsd, 0.179);

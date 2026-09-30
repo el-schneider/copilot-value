@@ -38,7 +38,7 @@ Options: `--source aa|arena`, `--min-score N`, `--top 1..100`, `--input/--cached
 - `models[]`: ranked. `id` is the Copilot ID; `dispatchId` is `github-copilot/<id>` for tools taking a provider/model string.
 - `models[].score`, `costUsd`, `aiCredits` (USD × 100), `rates` (per-million-token prices).
 - `models[].benchmark.name`: the exact variant scored, including reasoning effort. Quote it with the score.
-- In `value` mode (the default), `models[]` is the frontier only: each row costs more and scores higher than the previous one. Models not listed are beaten on both by a listed model; they are not in `skipped[]`.
+- In `value` mode (the default), `models[]` is the frontier only: each row costs more and scores higher than the previous one. Models not listed are beaten on both by a listed model; `dominated` counts them, and they are not in `skipped[]`.
 - `skipped[]`: excluded models and why (no price, no benchmark match, workload exceeds limits). Never guess for these; a `--mapping` can fix a missing match.
 - `eligibility`: `enabledCount`, `fetchedAt`, `selection` (`model-picker` or `enabled-policy`).
 - `stale: true`: snapshot older than 6 h. Run `copilot-value refresh` unless offline is required.
