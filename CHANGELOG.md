@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `value` shows up to 3 close alternatives under each frontier row, dimmed and indented. An alternative scores within `--margin` of the frontier model (default 5 AA points or 50 Arena Elo), costs less than the next frontier row, and is dropped when a newer model of its family is listed. `--margin 0` shows the strict frontier.
+- JSON: alternative rows carry `alternativeTo`; `total` counts frontier rows.
+
 ## 0.3.1
 
 README and npm description lead with the two main questions.

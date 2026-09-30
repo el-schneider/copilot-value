@@ -10,17 +10,20 @@ Copilot offers about 30 models. The same task can cost 100× more on one than on
 ```
 $ copilot-value
 Best value · 30 models on your plan · LMArena WebDev Elo
-Each row scores higher and costs more than the one above; every unlisted model is beaten on both.
+Each numbered row scores higher and costs more than the one above. Indented: alternatives within 50 points in the same price tier.
 
-#  MODEL              SCORE    COST
-1  gpt-6-luna          1583  $0.015
-2  gemini-3.7-flash    1593  $0.113
-3  grok-4.7            1636  $0.260
-4  claude-sonnet-5.5   1699  $0.300
-5  claude-opus-5.5     1820  $0.600
+#  MODEL               SCORE    COST
+1  gpt-6-luna           1583  $0.015
+2  gemini-3.7-flash     1593  $0.113
+     gemini-3.8-flash   1581  $0.113
+3  grok-4.7             1636  $0.260
+4  claude-sonnet-5.5    1699  $0.300
+     gpt-6-sol          1692  $0.300
+     kimi-k3            1659  $0.450
+5  claude-opus-5.5      1820  $0.600
 
 Cost per task: 100k input, 10k output.
-21 more models omitted: each is beaten on price and score by a listed model (copilot-value best lists all).
+18 more models omitted: each is beaten on price and score by a listed model (copilot-value best lists all).
 Not ranked: claude-opus-4.8-fast, gpt-5-mini, gpt-6.1-sol, mai-code-1.1-flash (--verbose for reasons).
 Scores: https://lmarena.ai/leaderboard/webdev · Prices: https://models.dev
 ```
@@ -41,6 +44,7 @@ npm install -g copilot-value
 copilot-value                        # best value for money
 copilot-value best                   # best models for coding
 copilot-value --input 200000 --cached-input 150000 --output 8000   # your workload shape
+copilot-value --margin 0             # strict frontier, no alternatives
 copilot-value best --models claude-opus-5.5,gpt-6-sol   # compare a shortlist
 copilot-value --verbose              # plus benchmark variants, exclusion reasons, timestamps
 copilot-value --json                 # for scripts and agents

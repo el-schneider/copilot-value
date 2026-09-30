@@ -10,8 +10,8 @@ export const sources = {
   authoritativePricing: 'https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing',
 };
 export const benchmarkSources = {
-  aa: { name: 'Artificial Analysis Intelligence Index', url: 'https://artificialanalysis.ai', caveat: 'AA scores the exact variant shown; scores do not measure pi task success or Copilot speed.' },
-  arena: { name: 'LMArena WebDev Elo', url: 'https://lmarena.ai/leaderboard/webdev', caveat: 'Arena Elo is human preference on web-app tasks (lmarena-ai/leaderboard-dataset, CC BY 4.0). The best-scoring effort variant is used.' },
+  aa: { margin: 5, name: 'Artificial Analysis Intelligence Index', url: 'https://artificialanalysis.ai', caveat: 'AA scores the exact variant shown; scores do not measure pi task success or Copilot speed.' },
+  arena: { margin: 50, name: 'LMArena WebDev Elo', url: 'https://lmarena.ai/leaderboard/webdev', caveat: 'Arena Elo is human preference on web-app tasks (lmarena-ai/leaderboard-dataset, CC BY 4.0). The best-scoring effort variant is used.' },
 };
 export const ttl = 6 * 60 * 60 * 1000;
 export const defaultSource = () => process.env.ARTIFICIAL_ANALYSIS_API_KEY ? 'aa' : 'arena';
@@ -34,6 +34,7 @@ export const querySchema = {
     mode: { type: 'string', enum: ['value', 'best'], default: 'value', description: 'value: price/score frontier, cheapest first. best: highest score first' },
     source: { type: 'string', enum: ['aa', 'arena'], description: 'Default: aa when ARTIFICIAL_ANALYSIS_API_KEY is set, else arena (no key needed)' },
     minScore: { type: 'number', minimum: 0, description: 'Uses the source scale: AA index ~0-70, Arena Elo ~1300-1850' },
+    margin: { type: 'number', minimum: 0, description: 'value mode: show close alternatives within this many score points of a frontier model. Default 5 (aa) or 50 (arena); 0 = strict frontier' },
     input: { type: 'integer', minimum: 0, description: 'Total input tokens, including cache reads and writes', default: 100000 },
     cachedInput: { type: 'integer', minimum: 0, default: 0 },
     cacheWrite: { type: 'integer', minimum: 0, default: 0 },
@@ -56,6 +57,7 @@ export function options(raw = {}) {
   for (const key of ['mode', 'source']) if (!querySchema.properties[key].enum.includes(o[key])) throw Error(`Invalid ${key}: ${o[key]}`);
   for (const key of ['input', 'cachedInput', 'cacheWrite', 'output', 'top']) number(o[key], key, true);
   number(o.minScore, 'minScore');
+  o.margin = number(o.margin ?? benchmarkSources[o.source].margin, 'margin');
   if (!o.top || o.top > 100) throw Error('top must be 1–100');
   if (o.cachedInput + o.cacheWrite > o.input) throw Error('cachedInput + cacheWrite must not exceed total input');
   if (!o.input && !o.output) throw Error('Workload must contain tokens');
@@ -156,6 +158,24 @@ function match(entries, source, id, mapped) {
   return hits.filter(e => e.score !== null).sort((a, b) => b.score - a.score)[0] ?? hits[0];
 }
 
+// Scores are noisy, prices are not: a model just below the frontier may be as good in practice.
+// Alternatives stay in their frontier row's price tier, and an older model is dropped when a newer one of its family is listed.
+function alternativesFor(rows, frontier, margin, catalog) {
+  const onFrontier = new Set(frontier.map(m => m.id));
+  const candidates = rows.filter(m => !onFrontier.has(m.id)).flatMap(m => {
+    const i = frontier.findLastIndex(f => f.costUsd <= m.costUsd);
+    const parent = frontier[i], next = frontier[i + 1];
+    return parent.score - m.score <= margin && (next ? m.costUsd < next.costUsd : m.costUsd <= parent.costUsd)
+      ? [{ ...m, alternativeTo: parent.id, gap: parent.score - m.score }] : [];
+  });
+  const listed = [...frontier, ...candidates].map(m => catalog.get(m.id));
+  const superseded = m => listed.some(o => o.family && o.family === m.family && o.release_date > m.release_date);
+  const shown = [];
+  for (const c of candidates.sort((a, b) => a.gap - b.gap || a.costUsd - b.costUsd || compare(a.id, b.id)))
+    if (!superseded(catalog.get(c.id)) && shown.filter(s => s.alternativeTo === c.alternativeTo).length < 3) shown.push(c);
+  return shown.map(({ gap, ...m }) => m);
+}
+
 export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
   validateSnapshot(snapshot);
   const o = options(raw);
@@ -186,12 +206,16 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
     rows.push({ id: m.id, dispatchId: `github-copilot/${m.id}`, benchmark: { slug: found.slug, name: found.name }, score, costUsd, aiCredits: costUsd * 100, rates: { input: rates.input, output: rates.output, cacheRead: rates.cache_read ?? null, cacheWrite: rates.cache_write ?? null, threshold } });
   }
   if (allowed) for (const id of allowed) if (!snapshot.models.some(m => m.id === id)) skipped.push({ id, reason: 'No Copilot pricing in catalog' });
-  let models = rows;
-  if (o.mode === 'best') rows.sort((a, b) => b.score - a.score || a.costUsd - b.costUsd || compare(a.id, b.id));
-  else {
+  let frontier = rows, models;
+  if (o.mode === 'best') {
+    rows.sort((a, b) => b.score - a.score || a.costUsd - b.costUsd || compare(a.id, b.id));
+    models = rows.slice(0, o.top);
+  } else {
     rows.sort((a, b) => a.costUsd - b.costUsd || b.score - a.score || compare(a.id, b.id));
-    models = [];
-    for (const m of rows) if (m.score > (models.at(-1)?.score ?? -Infinity)) models.push(m);
+    frontier = [];
+    for (const m of rows) if (m.score > (frontier.at(-1)?.score ?? -Infinity)) frontier.push(m);
+    const alternatives = o.margin ? alternativesFor(rows, frontier, o.margin, new Map(snapshot.models.map(m => [m.id, m]))) : [];
+    models = frontier.slice(0, o.top).flatMap(f => [f, ...alternatives.filter(a => a.alternativeTo === f.id)]);
   }
   skipped.sort((a, b) => compare(a.id, b.id));
   return {
@@ -204,10 +228,10 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {} } = {}) {
       'Catalog membership is not account entitlement.',
       'Token-billed AI Credits only; not legacy premium-request plans.',
       benchmarkSources[source].caveat,
-      ...(o.mode === 'value' ? ['Value lists the price/score frontier: each row costs more and scores higher than the previous one; every omitted model is beaten on both.'] : []),
+      ...(o.mode === 'value' ? [`Value lists the price/score frontier: each row costs more and scores higher than the previous one; every omitted model is beaten on both. Alternatives score within ${o.margin} of a frontier model in the same price tier.`] : []),
     ],
-    total: models.length, models: models.slice(0, o.top), skipped,
-    dominated: rows.length - models.length,
+    total: frontier.length, models, skipped,
+    dominated: o.mode === 'value' ? rows.length - frontier.length - models.filter(m => m.alternativeTo).length : 0,
   };
 }
 
@@ -222,7 +246,7 @@ function formatVerbose(result) {
       : 'Scope: published catalog (account eligibility not checked)',
     '',
   ];
-  const rows = [['#', 'MODEL', 'SCORE', 'USD', 'CREDITS'], ...result.models.map((m, i) => [String(i + 1), m.id, m.score.toFixed(1), m.costUsd.toFixed(4), m.aiCredits.toFixed(2)])];
+  const rows = [['#', 'MODEL', 'SCORE', 'USD', 'CREDITS'], ...numbered(result.models).map(([n, m]) => [n, m.alternativeTo ? `  ${m.id}` : m.id, m.score.toFixed(1), m.costUsd.toFixed(4), m.aiCredits.toFixed(2)])];
   const widths = rows[0].map((_, col) => Math.max(...rows.map(row => row[col].length)));
   lines.push(...rows.map(row => row.map((cell, col) => col < 2 ? cell.padEnd(widths[col]) : cell.padStart(widths[col])).join('  ').trimEnd()));
   if (!result.models.length) lines.push('No rankable models.');
@@ -233,18 +257,21 @@ function formatVerbose(result) {
 }
 
 const k = n => `${n / 1000}k`;
+const numbered = models => { let n = 0; return models.map(m => [m.alternativeTo ? '' : String(++n), m]); };
 // style defaults to plain text so tool/JSON consumers never get ANSI codes; the CLI passes util.styleText.
 export function format(result, { verbose = false, style = (_, text) => text } = {}) {
   if (verbose) return formatVerbose(result);
   const o = result.options;
   const scope = result.eligibility ? `${result.eligibility.enabledCount} models on your plan` : 'published catalog';
   const lines = [`${style('bold', o.mode === 'value' ? 'Best value' : 'Best models')} ${style('dim', `· ${scope} · ${result.source.name}`)}`];
-  if (o.mode === 'value') lines.push(style('dim', 'Each row scores higher and costs more than the one above; every unlisted model is beaten on both.'));
+  if (o.mode === 'value') lines.push(style('dim', `Each numbered row scores higher and costs more than the one above. Indented: alternatives within ${o.margin} points in the same price tier.`));
   if (result.stale || result.eligibility?.stale) lines.push(style('yellow', 'STALE cached data; run copilot-value refresh'));
-  const rows = [['#', 'MODEL', 'SCORE', 'COST'], ...result.models.map((m, i) => [String(i + 1), m.id, m.score.toFixed(result.source.id === 'aa' ? 1 : 0), `$${m.costUsd.toFixed(3)}`])];
+  const rows = [['#', 'MODEL', 'SCORE', 'COST'], ...numbered(result.models).map(([n, m]) => [n, m.alternativeTo ? `  ${m.id}` : m.id, m.score.toFixed(result.source.id === 'aa' ? 1 : 0), `$${m.costUsd.toFixed(3)}`])];
   const widths = rows[0].map((_, col) => Math.max(...rows.map(row => row[col].length)));
   const table = rows.map(row => row.map((cell, col) => col < 2 ? cell.padEnd(widths[col]) : cell.padStart(widths[col])));
-  lines.push('', style('dim', table[0].join('  ').trimEnd()), ...table.slice(1).map(([rank, ...rest]) => `${style('dim', rank)}  ${rest.join('  ')}`.trimEnd()));
+  lines.push('', style('dim', table[0].join('  ').trimEnd()), ...table.slice(1).map(([rank, ...rest], i) => result.models[i].alternativeTo
+    ? style('dim', `${rank}  ${rest.join('  ')}`.trimEnd())
+    : `${style('dim', rank)}  ${rest.join('  ')}`.trimEnd()));
   if (!result.models.length) lines.push('No rankable models.');
   const cache = [o.cachedInput && `${k(o.cachedInput)} cached`, o.cacheWrite && `${k(o.cacheWrite)} cache write`].filter(Boolean).join(', ');
   const footer = [`Cost per task: ${k(o.input)} input${cache ? ` (${cache})` : ''}, ${k(o.output)} output.`];

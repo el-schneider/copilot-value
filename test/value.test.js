@@ -26,12 +26,12 @@ test('best sorts by score; value keeps only the price/score frontier, cheapest f
   s.models.push(model('gamma', { input: 3, output: 12 }), model('delta', { input: 0.5, output: 1 }));
   s.benchmarks.entries.push(entry('gamma', 60), entry('delta', 40));
   assert.deepEqual(rank(s, { mode: 'best' }).models.map(m => m.id), ['alpha', 'gamma', 'delta', 'beta']);
-  assert.deepEqual(rank(s).models.map(m => m.id), ['delta', 'alpha']);
-  assert.equal(rank(s).dominated, 2);
+  assert.deepEqual(rank(s, { margin: 0 }).models.map(m => m.id), ['delta', 'alpha']);
+  assert.equal(rank(s, { margin: 0 }).dominated, 2);
   assert.equal(rank(s, { mode: 'best' }).dominated, 0);
-  assert.match(format(rank(s)), /2 more models omitted: each is beaten on price and score/);
+  assert.match(format(rank(s, { margin: 0 })), /2 more models omitted: each is beaten on price and score/);
   assert.doesNotMatch(format(rank(s, { mode: 'best' })), /omitted/);
-  assert.equal(rank(s, { mode: 'value', minScore: 70 }).models[0].id, 'alpha');
+  assert.equal(rank(s, { minScore: 70 }).models[0].id, 'alpha');
   const a = rank(s, { input: 100000, cachedInput: 70000, cacheWrite: 10000, output: 10000 }).models[0];
   assert.equal(a.costUsd, 0.179);
   assert.equal(a.aiCredits, 17.9);
@@ -47,6 +47,26 @@ test('styling wraps padded cells, so columns stay aligned; default output has no
   assert.match(styled, /^<bold>Best value<\/bold> <dim>· published catalog/);
   assert.equal(styled.replace(/<\/?\w+>/g, ''), plain);
   assert.doesNotMatch(plain, /\x1b/);
+});
+
+test('value alternatives: within margin, same price tier, newest in family, at most 3 per row', () => {
+  const m = (id, usd, family, date) => ({ id, family, release_date: date, cost: { input: usd * 10, output: 0 } });
+  const s = { version: 2, pricingAt: now, models: [
+    m('cheap', 0.1, 'x', '2026-01-01'), m('cheap-old', 0.1, 'x', '2025-01-01'), m('far', 0.1, 'v', '2026-01-01'),
+    m('mid', 0.3, 'y', '2026-01-01'), ...[1, 2, 3, 4].map(i => m(`rival${i}`, 0.3, `r${i}`, '2026-01-01')), m('expensive', 0.9, 'w', '2026-01-01'),
+  ], benchmarks: { source: 'arena', fetchedAt: now, entries: [
+    entry('cheap', 100), entry('cheap-old', 95), entry('far', 10), entry('mid', 150),
+    entry('rival1', 149), entry('rival2', 148), entry('rival3', 147), entry('rival4', 146), entry('expensive', 149),
+  ] } };
+  const result = rank(s);
+  assert.deepEqual(result.models.map(m => [m.id, m.alternativeTo ?? null]), [['cheap', null], ['mid', null], ['rival1', 'mid'], ['rival2', 'mid'], ['rival3', 'mid']]);
+  assert.equal(result.total, 2);
+  assert.equal(result.dominated, 4);
+  assert.deepEqual(rank(s, { margin: 0 }).models.map(m => m.id), ['cheap', 'mid']);
+  assert.deepEqual(rank(s, { top: 1 }).models.map(m => m.id), ['cheap']);
+  assert.equal(rank(s, { margin: 5 }).models.length, 5);
+  assert.match(format(result), /\n1  cheap +100  \$0\.100\n2  mid +150  \$0\.300\n {5}rival1 +149  \$0\.300\n/);
+  assert.throws(() => rank(s, { margin: -1 }), /Invalid margin/);
 });
 
 test('context tiers use total input and strict threshold, not the legacy 200k alias', () => {
