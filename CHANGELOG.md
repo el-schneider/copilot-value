@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - `value` shows up to 3 close alternatives under each frontier row, dimmed and indented. An alternative scores within `--margin` of the frontier model (default 5 AA points or 50 Arena Elo), costs less than the next frontier row, and is dropped when a newer model of its family is listed. `--margin 0` shows the strict frontier.
 - With an AA key, Arena scores act as a second opinion: a model Arena rates close to the frontier also qualifies as an alternative. A tag after each alternative (`aa`, `arena`, `aa+arena`) shows which source put it close. The second source's margin scales with `--margin`.
