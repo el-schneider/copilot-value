@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+README and npm description lead with the two main questions.
+
 ## 0.3.0
 
 Breaking: simpler commands, and works without an API key.
