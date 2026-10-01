@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.1
 
+- Token lookup: `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, then the gh login. A classic PAT (`ghp_`) in `GH_TOKEN` or `GITHUB_TOKEN` is skipped with a notice, because Copilot rejects classic PATs. Rejected tokens produce an error with Copilot's reason and the next step (#1).
 - `--all-versions` keeps older models of a family as value alternatives, even when a newer model of the family is listed.
 
 ## 0.4.0
