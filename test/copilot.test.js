@@ -5,12 +5,22 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { loadEligibility, parseEligibility, eligibilityTtl } from '../src/copilot.js';
+import { loadEligibility, parseEligibility, eligibilityTtl, resolveToken } from '../src/copilot.js';
 import { query } from '../src/query.js';
 
 delete process.env.ARTIFICIAL_ANALYSIS_API_KEY;
 
 const endpoint = 'https://api.githubcopilot.com';
+const tokenVars = ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN', 'PATH'];
+// Fake gh prints its own GH_TOKEN, or the keyring token, so tests see what reached it.
+async function withEnv(t, vars, ghOutput = 'gho_keyring') {
+  const dir = await mkdtemp(join(tmpdir(), 'cv-gh-'));
+  await writeFile(join(dir, 'gh'), `#!/bin/sh\necho "\${GH_TOKEN:-\${GITHUB_TOKEN:-${ghOutput}}}"\n`, { mode: 0o755 });
+  const saved = Object.fromEntries(tokenVars.map(name => [name, process.env[name]]));
+  t.after(async () => { for (const [name, value] of Object.entries(saved)) value === undefined ? delete process.env[name] : process.env[name] = value; await rm(dir, { recursive: true, force: true }); });
+  for (const name of tokenVars.slice(0, 3)) delete process.env[name];
+  Object.assign(process.env, vars, { PATH: `${dir}:${saved.PATH}` });
+}
 const m = (id, picker, state) => ({ id, model_picker_enabled: picker, policy: { state }, capabilities: { supports: { tool_calls: true } } });
 async function setup(t) {
   const dir = await mkdtemp(join(tmpdir(), 'cv-auth-test-'));
@@ -77,4 +87,38 @@ test('authorization failures never fall back to the published catalog', async t 
   t.mock.method(globalThis, 'fetch', async () => new Response('{}', { status: 403 }));
   await assert.rejects(query({}, { token, cache }), /HTTP 403/);
   await assert.rejects(query({}, { token: 'fake-secret', cache }), error => !error.message.includes('fake-secret'));
+  t.mock.method(globalThis, 'fetch', async () => new Response('bad request: Personal Access Tokens are not supported', { status: 400 }));
+  await assert.rejects(query({}, { token, cache }), /HTTP 400 \(bad request: Personal Access Tokens are not supported\)\nToken from token option rejected/);
+});
+
+test('token precedence skips classic PATs only in shared variables', async t => {
+  await withEnv(t, { COPILOT_GITHUB_TOKEN: 'github_pat_copilot', GH_TOKEN: 'gho_gh', GITHUB_TOKEN: 'gho_github' });
+  assert.deepEqual(await resolveToken(), { token: 'github_pat_copilot', source: 'COPILOT_GITHUB_TOKEN', skipped: [] });
+  assert.equal((await resolveToken({ token: 'gho_explicit' })).token, 'gho_explicit');
+  delete process.env.COPILOT_GITHUB_TOKEN;
+  assert.equal((await resolveToken()).source, 'GH_TOKEN');
+  process.env.GH_TOKEN = 'ghp_classic';
+  assert.deepEqual(await resolveToken(), { token: 'gho_github', source: 'GITHUB_TOKEN', skipped: ['GH_TOKEN'] });
+  process.env.GITHUB_TOKEN = 'ghp_classic';
+  assert.deepEqual(await resolveToken({ host: 'corp.ghe.com' }), { token: 'gho_keyring', source: 'gh login', skipped: ['GH_TOKEN', 'GITHUB_TOKEN'] });
+  process.env.COPILOT_GITHUB_TOKEN = 'ghp_classic';
+  await assert.rejects(resolveToken(), /COPILOT_GITHUB_TOKEN is a classic PAT/);
+  await assert.rejects(resolveToken({ token: 'ghp_classic' }), /token option is a classic PAT/);
+});
+
+test('no usable token fails before network', async t => {
+  await withEnv(t, { GH_TOKEN: 'ghp_classic' }, 'ghp_keyring');
+  t.mock.method(globalThis, 'fetch', () => assert.fail('network'));
+  await assert.rejects(loadEligibility({ cache: join(tmpdir(), 'cv-unused.json'), refresh: true }), /GH_TOKEN ignored.*gh login returned a classic PAT/);
+});
+
+test('skipped tokens are reported, rejections name the source and never echo the token', async t => {
+  const { cache } = await setup(t);
+  await withEnv(t, { GH_TOKEN: 'ghp_classic', GITHUB_TOKEN: 'gho_secret' });
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ data: [m('allowed', true, 'enabled')] })));
+  const result = await query({}, { cache });
+  assert.deepEqual([result.eligibility.tokenSource, result.eligibility.skippedTokens], ['GITHUB_TOKEN', ['GH_TOKEN']]);
+  assert.match(result.caveats[0], /Ignored GH_TOKEN: classic PAT/);
+  t.mock.method(globalThis, 'fetch', async () => new Response('denied for gho_secret', { status: 403 }));
+  await assert.rejects(query({}, { cache, refresh: true }), error => /HTTP 403 \(denied for \[token\]\)\nToken from GITHUB_TOKEN rejected/.test(error.message));
 });

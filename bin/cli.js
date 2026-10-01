@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { format, querySchema } from '../src/index.js';
 import { query as getRankings } from '../src/query.js';
+import { skippedTokenNotice } from '../src/copilot.js';
 
 const names = { minScore: 'min-score', cachedInput: 'cached-input', cacheWrite: 'cache-write', allVersions: 'all-versions' };
 const flags = Object.keys(querySchema.properties).filter(key => key !== 'mode');
@@ -70,7 +71,7 @@ OPTIONS
   --top N                  1–100; default 10
   --models id,id           Narrow to exact IDs; never bypasses eligibility
   --all                    Published catalog instead of subscription
-  --host HOST              github.com or *.ghe.com (or GH_HOST); token from GITHUB_TOKEN or gh auth token
+  --host HOST              github.com or *.ghe.com (or GH_HOST); token from COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN or gh login
   --mapping FILE           JSON object: Copilot ID -> exact benchmark slug
   --cache FILE             Snapshot path (or COPILOT_VALUE_CACHE)
   --offline                Use cached snapshot without network, even if stale
@@ -92,6 +93,7 @@ Exit codes: 0 = results, 1 = error (stderr), 2 = no rankable models.`);
     const modelIds = values.models?.split(',').map(id => id.trim());
     if (modelIds?.some(id => !id)) throw Error('--models cannot contain empty IDs');
     const result = await getRankings(query, { cache: values.cache, host: values.host, offline: values.offline, refresh: command === 'refresh', all: values.all, mappings, modelIds });
+    if (result.eligibility?.skippedTokens.length) console.error(`copilot-value: ${skippedTokenNotice(result.eligibility)}`);
     console.log(values.json ? JSON.stringify(result, null, 2) : format(result, { verbose: values.verbose, style: styleText }));
     if (!result.total) process.exitCode = 2;
   }

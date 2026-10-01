@@ -49,7 +49,7 @@ Options: `--source aa|arena`, `--min-score N`, `--margin N` (value alternatives;
 - Only `models[]` from a non-`--all` run are usable on this account. `--all` output and `skipped[]` are not.
 - Scores measure benchmarks, not task success. Token cost is an estimate, not a bill; it ignores subscription fees, included allowances, and remaining quota.
 - Default workload is 100k input / 10k output, no cache hits. Pass the real shape when known.
-- Rankings do not fall back to the catalog on auth errors. On `{"error": ...}` mentioning the token, tell the user to run `gh auth login`.
+- Rankings do not fall back to the catalog on auth errors. On `{"error": ...}` mentioning the token, tell the user to run `gh auth login` or set `COPILOT_GITHUB_TOKEN` to a fine-grained PAT with the Copilot Requests permission. Copilot rejects classic PATs (`ghp_`); one in `GH_TOKEN`/`GITHUB_TOKEN` is skipped and reported in `eligibility.skippedTokens`.
 
 ## Data
 
