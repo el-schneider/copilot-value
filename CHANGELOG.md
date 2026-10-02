@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0
+
+- Scores come from [model-frontier](https://github.com/el-schneider/model-frontier), which moves Artificial Analysis to its v2 free endpoint (`/api/v2/language/models/free`). The old endpoint retires before 4 November 2026. Scores are cached 24 hours and shared with the `model-frontier` CLI.
+- The attribution line names the LMArena dataset and links its CC BY 4.0 license, in text and in JSON (`source.attribution`).
+
 ## 0.4.1
 
 - Token lookup: `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, then the gh login. A classic PAT (`ghp_`) in `GH_TOKEN` or `GITHUB_TOKEN` is skipped with a notice, because Copilot rejects classic PATs. Rejected tokens produce an error with Copilot's reason and the next step (#1).
