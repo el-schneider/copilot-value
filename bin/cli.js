@@ -79,7 +79,7 @@ OPTIONS
   --json                   One JSON object on stdout
 
 Scores are benchmarks, not your task; cost is a token estimate, not a bill.
-Cache: 15 minutes for eligibility, 6 hours for prices and scores.
+Cache: 15 minutes for eligibility, 6 hours for prices, 24 hours for scores (shared with model-frontier).
 Exit codes: 0 = results, 1 = error (stderr), 2 = no rankable models.`);
   } else {
     const command = positionals[0] ?? 'value';

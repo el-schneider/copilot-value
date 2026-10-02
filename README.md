@@ -25,7 +25,7 @@ Each numbered row scores higher and costs more than the one above. Indented: alt
 Cost per task: 100k input, 10k output.
 18 more models omitted: each is beaten on price and score by a listed model (copilot-value best lists all).
 Not ranked: claude-opus-4.8-fast, gpt-5-mini, gpt-6.1-sol, mai-code-1.1-flash (--verbose for reasons).
-Scores: https://lmarena.ai/leaderboard/webdev · Prices: https://models.dev
+Scores: LMArena WebDev leaderboard (https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset), CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), filtered and ranked by model-frontier · Prices: models.dev (https://models.dev)
 ```
 
 Read-only: no inference calls, no quota spent, nothing changed on your account.

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -9,6 +10,8 @@ import { rank, format, loadSnapshot, options, sources, ttl } from '../src/index.
 import extension from '../extensions/copilot-value.js';
 
 delete process.env.ARTIFICIAL_ANALYSIS_API_KEY;
+// model-frontier caches scores under XDG_CACHE_HOME; keep test runs out of the real cache.
+process.env.XDG_CACHE_HOME = mkdtempSync(join(tmpdir(), 'copilot-value-xdg-'));
 const now = Date.now();
 const entry = (slug, score, name = slug) => ({ slug, name, score });
 const model = (id, cost = { input: 2, output: 10, cache_read: 0.2, cache_write: 2.5 }) => ({ id, cost, limit: { context: 1000000, output: 100000 } });
@@ -32,6 +35,11 @@ test('best sorts by score; value keeps only the price/score frontier, cheapest f
   assert.match(format(rank(s, { margin: 0 })), /2 more models omitted: each is beaten on price and score/);
   assert.doesNotMatch(format(rank(s, { mode: 'best' })), /omitted/);
   assert.equal(rank(s, { minScore: 70 }).models[0].id, 'alpha');
+  for (const result of [rank(s), rank(fixture('aa'), { source: 'aa' })]) {
+    assert.match(result.source.attribution, result.source.id === 'aa' ? /Artificial Analysis \(https:\/\/artificialanalysis\.ai\)/ : /CC BY 4\.0 \(https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/\)/);
+    assert.ok(format(result).includes(result.source.attribution));
+    assert.ok(format(result, { verbose: true }).includes(result.source.attribution));
+  }
   const a = rank(s, { input: 100000, cachedInput: 70000, cacheWrite: 10000, output: 10000 }).models[0];
   assert.equal(a.costUsd, 0.179);
   assert.equal(a.aiCredits, 17.9);
@@ -166,14 +174,15 @@ test('arena refresh pages without a key; offline reuses it; other sources and ol
   });
   await writeFile(cache, JSON.stringify({ version: 1, models: [] }));
   const fresh = await loadSnapshot({ cache, source: 'arena' });
-  assert.equal(fetches.length, 3);
+  // models.dev twice: Copilot prices here, reference prices inside model-frontier.
+  assert.equal(fetches.length, 4);
   assert.equal(fresh.benchmarks.entries.length, 101);
   assert.equal(rank(fresh).models[0].benchmark.name, 'alpha-max');
   assert.deepEqual(await loadSnapshot({ cache, source: 'arena', offline: true }), fresh);
   await assert.rejects(loadSnapshot({ cache, source: 'aa', offline: true }), /No offline aa snapshot/);
   assert.equal(await loadSnapshot({ cache, source: 'aa', offline: true, optional: true }), undefined);
   await assert.rejects(loadSnapshot({ cache, source: 'aa', refresh: true }), /needs ARTIFICIAL_ANALYSIS_API_KEY/);
-  assert.equal(fetches.length, 3);
+  assert.equal(fetches.length, 4);
   const stale = { ...fresh, pricingAt: now - ttl - 1000 };
   await writeFile(cache, JSON.stringify(stale));
   assert.equal(rank(await loadSnapshot({ cache, source: 'arena', offline: true })).stale, true);
@@ -188,7 +197,7 @@ test('aa refresh sends the key and scores by intelligence index', async t => {
     if (url === sources.pricing) return new Response(JSON.stringify({ 'github-copilot': { models: { alpha: model('alpha') } } }));
     assert.equal(init.headers['x-api-key'], 'secret-key');
     assert.equal(init.redirect, 'error');
-    return new Response(JSON.stringify({ data: [{ slug: 'alpha', name: 'Alpha (max)', evaluations: { artificial_analysis_intelligence_index: 55, artificial_analysis_coding_index: null } }] }));
+    return new Response(JSON.stringify({ data: [{ slug: 'alpha', name: 'Alpha (max)', evaluations: { artificial_analysis_intelligence_index: 55, artificial_analysis_coding_index: null } }], pagination: { has_more: false } }));
   });
   const result = rank(await loadSnapshot({ cache }));
   assert.equal(result.source.id, 'aa');

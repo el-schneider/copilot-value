@@ -55,7 +55,8 @@ Options: `--source aa|arena`, `--min-score N`, `--margin N` (value alternatives;
 
 - Eligibility: Copilot `/models` (internal endpoint), cached 15 min, keyed to the token. Disabled, unconfigured, non-picker, and non-tool-calling models are excluded.
 - Prices: https://models.dev/api.json, `github-copilot` provider. Community-maintained; billing reference at https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing. Long-context rates apply above the published threshold.
-- AA: https://artificialanalysis.ai/api/v2/data/llms/models with `ARTIFICIAL_ANALYSIS_API_KEY`. Subject to https://artificialanalysis.ai/data-api; do not redistribute snapshots.
+- Scores come from [model-frontier](https://github.com/el-schneider/model-frontier), cached 24 h in `$XDG_CACHE_HOME/model-frontier/` and shared with its CLI.
+- AA: https://artificialanalysis.ai/api/v2/language/models/free with `ARTIFICIAL_ANALYSIS_API_KEY`. Subject to https://artificialanalysis.ai/data-api; do not redistribute snapshots.
 - Arena: `webdev` config, `latest` split, `overall` category of https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset (CC BY 4.0).
 - Matching: IDs normalized (`.`/`_` to `-`). AA: exact slug, plus explicit aliases for a few Claude reasoning variants. Arena: exact name or name plus effort/date/harness suffix (`-high`, `-max`, `-20251001`, ` (codex-harness)`); the best-scoring variant wins. No fuzzy matching.
 - Cost: `(uncached × input + cached × cacheRead + writes × cacheWrite + output × output) / 1e6` USD.

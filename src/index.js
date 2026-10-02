@@ -2,17 +2,20 @@ import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
+import { loadModels, frontier, sources as frontierSources } from 'model-frontier';
 
 export const sources = {
   pricing: 'https://models.dev/api.json',
-  aa: 'https://artificialanalysis.ai/api/v2/data/llms/models',
-  arena: 'https://datasets-server.huggingface.co/rows?dataset=lmarena-ai%2Fleaderboard-dataset&config=webdev&split=latest',
+  aa: frontierSources.aa.api,
+  arena: frontierSources.arena.api,
   authoritativePricing: 'https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing',
 };
 export const benchmarkSources = {
   aa: { margin: 5, name: 'Artificial Analysis Intelligence Index', url: 'https://artificialanalysis.ai', caveat: 'AA scores the exact variant shown; scores do not measure pi task success or Copilot speed.' },
   arena: { margin: 50, name: 'LMArena WebDev Elo', url: 'https://lmarena.ai/leaderboard/webdev', caveat: 'Arena Elo is human preference on web-app tasks (lmarena-ai/leaderboard-dataset, CC BY 4.0). The best-scoring effort variant is used.' },
 };
+// Every output names its score source and price source; LMArena data is CC BY 4.0 and needs the license link.
+const attribution = { aa: `${frontierSources.aa.attribution} · Prices: models.dev (https://models.dev)`, arena: frontierSources.arena.attribution };
 export const ttl = 6 * 60 * 60 * 1000;
 export const defaultSource = () => process.env.ARTIFICIAL_ANALYSIS_API_KEY ? 'aa' : 'arena';
 export const cacheDir = () => join(process.env.XDG_CACHE_HOME ?? join(homedir(), '.cache'), 'copilot-value');
@@ -109,27 +112,15 @@ async function readOptional(path) {
   try { return JSON.parse(await readFile(path, 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
 }
-async function fetchJson(url, headers, signal) {
-  // Authenticated requests must not follow redirects: fetch keeps custom headers like x-api-key across origins.
-  const response = await fetch(url, { headers, redirect: headers ? 'error' : 'follow', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) });
+async function fetchJson(url, signal) {
+  const response = await fetch(url, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) });
   if (!response.ok) throw Error(`${url}: HTTP ${response.status}`);
   return response.json();
 }
-async function fetchAA(signal) {
-  const aa = await fetchJson(sources.aa, { 'x-api-key': process.env.ARTIFICIAL_ANALYSIS_API_KEY }, signal);
-  if (!Array.isArray(aa?.data)) throw Error('Unexpected Artificial Analysis response');
-  return aa.data.map(b => ({ slug: b.slug, name: b.name, score: b.evaluations?.artificial_analysis_intelligence_index ?? null }));
-}
-// /rows is cached by Hugging Face; /filter can take >25 s or return 500, so filter the category here.
-async function fetchArena(signal) {
-  const page = offset => fetchJson(`${sources.arena}&offset=${offset}&length=100`, undefined, signal).then(p => {
-    if (!Array.isArray(p?.rows) || !Number.isSafeInteger(p.num_rows_total)) throw Error('Unexpected LMArena response');
-    return p;
-  });
-  const first = await page(0);
-  const rest = await Promise.all(Array.from({ length: Math.ceil(first.num_rows_total / 100) - 1 }, (_, i) => page((i + 1) * 100)));
-  return [first, ...rest].flatMap(p => p.rows).map(r => r.row).filter(r => r.category === 'overall')
-    .map(r => ({ slug: r.model_name, name: r.model_name, score: r.rating }));
+// model-frontier fetches and caches the scores; its cache is shared with the model-frontier CLI.
+async function fetchScores(source, refresh, signal) {
+  const { models } = await loadModels({ source, refresh, signal });
+  return models.map(m => ({ slug: m.id, name: m.name, score: source === 'aa' ? m.scores.intelligence : m.scores.arena }));
 }
 export async function loadSnapshot({ source = defaultSource(), cache = defaultCache(source), offline = false, refresh = false, optional = false, signal } = {}) {
   if (offline && refresh) throw Error('offline and refresh cannot be combined');
@@ -141,7 +132,7 @@ export async function loadSnapshot({ source = defaultSource(), cache = defaultCa
   if (offline && optional) return undefined;
   if (offline) throw Error(`No offline ${source} snapshot at ${cache}; run copilot-value refresh first`);
   if (source === 'aa' && !process.env.ARTIFICIAL_ANALYSIS_API_KEY) throw Error('Source aa needs ARTIFICIAL_ANALYSIS_API_KEY (free at https://artificialanalysis.ai/data-api); omit --source to use LMArena without a key');
-  const [catalog, entries] = await Promise.all([fetchJson(sources.pricing, undefined, signal), source === 'aa' ? fetchAA(signal) : fetchArena(signal)]);
+  const [catalog, entries] = await Promise.all([fetchJson(sources.pricing, signal), fetchScores(source, refresh, signal)]);
   const models = catalog['github-copilot']?.models;
   if (!models || typeof models !== 'object' || Array.isArray(models)) throw Error('models.dev has no GitHub Copilot catalog');
   const snapshot = validateSnapshot({ version: 2, pricingAt: Date.now(), models: Object.values(models), benchmarks: { source, fetchedAt: Date.now(), entries } });
@@ -163,11 +154,9 @@ function match(entries, source, id, mapped) {
 
 // For one source's scores, how far each model sits below the best score available at its price or less.
 function gapsFor(rows, score) {
-  const frontier = [];
-  for (const r of rows.filter(r => score.has(r.id)).sort((a, b) => a.costUsd - b.costUsd || score.get(b.id) - score.get(a.id)))
-    if (score.get(r.id) > (frontier.length ? score.get(frontier.at(-1).id) : -Infinity)) frontier.push(r);
+  const front = frontier(rows.filter(r => score.has(r.id)), { score: r => score.get(r.id), cost: r => r.costUsd });
   return m => {
-    const parent = score.has(m.id) && frontier.findLast(f => f.costUsd <= m.costUsd);
+    const parent = score.has(m.id) && front.findLast(f => f.costUsd <= m.costUsd);
     return parent ? score.get(parent.id) - score.get(m.id) : Infinity;
   };
 }
@@ -222,14 +211,13 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {}, secondary } 
     rows.push({ id: m.id, dispatchId: `github-copilot/${m.id}`, benchmark: { slug: found.slug, name: found.name }, score, costUsd, aiCredits: costUsd * 100, rates: { input: rates.input, output: rates.output, cacheRead: rates.cache_read ?? null, cacheWrite: rates.cache_write ?? null, threshold } });
   }
   if (allowed) for (const id of allowed) if (!snapshot.models.some(m => m.id === id)) skipped.push({ id, reason: 'No Copilot pricing in catalog' });
-  let frontier = rows, models, hedge;
+  let front = rows, models, hedge;
   if (o.mode === 'best') {
     rows.sort((a, b) => b.score - a.score || a.costUsd - b.costUsd || compare(a.id, b.id));
     models = rows.slice(0, o.top);
   } else {
     rows.sort((a, b) => a.costUsd - b.costUsd || b.score - a.score || compare(a.id, b.id));
-    frontier = [];
-    for (const m of rows) if (m.score > (frontier.at(-1)?.score ?? -Infinity)) frontier.push(m);
+    front = frontier(rows, { score: r => r.score, cost: r => r.costUsd });
     if (secondary) {
       validateSnapshot(secondary);
       const { source: id, entries: other } = secondary.benchmarks;
@@ -237,13 +225,13 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {}, secondary } 
       hedge = { source: id, margin: benchmarkSources[id].margin * o.margin / benchmarkSources[source].margin, score };
     }
     const tests = [{ source, margin: o.margin, score: new Map(rows.map(r => [r.id, r.score])) }, ...(hedge ? [hedge] : [])];
-    const alternatives = o.margin ? alternativesFor(rows, frontier, new Map(snapshot.models.map(m => [m.id, m])), tests, o.allVersions) : [];
-    models = frontier.slice(0, o.top).flatMap(f => [f, ...alternatives.filter(a => a.alternativeTo === f.id)]);
+    const alternatives = o.margin ? alternativesFor(rows, front, new Map(snapshot.models.map(m => [m.id, m])), tests, o.allVersions) : [];
+    models = front.slice(0, o.top).flatMap(f => [f, ...alternatives.filter(a => a.alternativeTo === f.id)]);
   }
   skipped.sort((a, b) => compare(a.id, b.id));
   return {
     snapshotId: createHash('sha256').update(JSON.stringify(snapshot)).digest('hex'),
-    sources, source: { id: source, ...benchmarkSources[source] },
+    sources, source: { id: source, ...benchmarkSources[source], attribution: attribution[source] },
     pricingAt: snapshot.pricingAt, benchmarksAt: snapshot.benchmarks.fetchedAt,
     stale: Date.now() - Math.min(snapshot.pricingAt, snapshot.benchmarks.fetchedAt) >= ttl,
     options: o, scope: allowed ? 'explicit-model-list' : 'published-copilot-catalog',
@@ -253,9 +241,9 @@ export function rank(snapshot, raw = {}, { modelIds, mappings = {}, secondary } 
       benchmarkSources[source].caveat,
       ...(o.mode === 'value' ? [`Value lists the price/score frontier: each row costs more and scores higher than the previous one; every omitted model is beaten on both. Alternatives score within ${o.margin} of a frontier model${hedge ? ` (or within ${hedge.margin} on ${benchmarkSources[hedge.source].name})` : ''} in the same price tier.`] : []),
     ],
-    total: frontier.length, models, skipped,
+    total: front.length, models, skipped,
     hedge: hedge ? { source: hedge.source, name: benchmarkSources[hedge.source].name, margin: hedge.margin } : null,
-    dominated: o.mode === 'value' ? rows.length - frontier.length - models.filter(m => m.alternativeTo).length : 0,
+    dominated: o.mode === 'value' ? rows.length - front.length - models.filter(m => m.alternativeTo).length : 0,
   };
 }
 
@@ -276,7 +264,7 @@ function formatVerbose(result) {
   if (!result.models.length) lines.push('No rankable models.');
   lines.push('', 'Benchmark variants:', ...result.models.map(m => `  ${m.id}: ${m.benchmark.name}`));
   if (result.skipped.length) lines.push('', `Excluded (${result.skipped.length}):`, ...result.skipped.map(m => `  ${m.id}: ${m.reason}`));
-  lines.push('', ...result.caveats, `Scores: ${result.source.url} · Prices: https://models.dev`);
+  lines.push('', ...result.caveats, attribution[result.source.id]);
   return lines.join('\n');
 }
 
@@ -302,7 +290,7 @@ export function format(result, { verbose = false, style = (_, text) => text } = 
   if (result.dominated) footer.push(`${result.dominated} more models omitted: each is beaten on price and score by a listed model (copilot-value best lists all).`);
   const unranked = result.skipped.filter(m => !m.reason.startsWith('Below minimum')).map(m => m.id);
   if (unranked.length) footer.push(`Not ranked: ${unranked.join(', ')} (--verbose for reasons).`);
-  footer.push(`Scores: ${result.source.url} · Prices: https://models.dev`);
+  footer.push(attribution[result.source.id]);
   lines.push('', ...footer.map(line => style('dim', line)));
   return lines.join('\n');
 }
