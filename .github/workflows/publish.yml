@@ -25,5 +25,6 @@ jobs:
         run: |
           pkg="v$(node -p "require('./package.json').version")"
           test "$pkg" = "$TAG" || { echo "tag $TAG != $pkg"; exit 1; }
+      - run: npm ci
       - run: npm test
       - run: npm publish --provenance
