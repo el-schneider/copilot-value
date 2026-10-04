@@ -12,10 +12,10 @@ delete process.env.ARTIFICIAL_ANALYSIS_API_KEY;
 
 const endpoint = 'https://api.githubcopilot.com';
 const tokenVars = ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN', 'PATH'];
-// Fake gh prints its own GH_TOKEN, or the keyring token, so tests see what reached it.
+// Fake gh prints its own GH_TOKEN or GITHUB_TOKEN, else gho_<user> for --user, else the keyring token, so tests see what reached it.
 async function withEnv(t, vars, ghOutput = 'gho_keyring') {
   const dir = await mkdtemp(join(tmpdir(), 'cv-gh-'));
-  await writeFile(join(dir, 'gh'), `#!/bin/sh\necho "\${GH_TOKEN:-\${GITHUB_TOKEN:-${ghOutput}}}"\n`, { mode: 0o755 });
+  await writeFile(join(dir, 'gh'), `#!/bin/sh\nfallback=${ghOutput}\nwhile [ $# -gt 0 ]; do [ "$1" = --user ] && fallback="gho_$2"; shift; done\necho "\${GH_TOKEN:-\${GITHUB_TOKEN:-$fallback}}"\n`, { mode: 0o755 });
   const saved = Object.fromEntries(tokenVars.map(name => [name, process.env[name]]));
   t.after(async () => { for (const [name, value] of Object.entries(saved)) value === undefined ? delete process.env[name] : process.env[name] = value; await rm(dir, { recursive: true, force: true }); });
   for (const name of tokenVars.slice(0, 3)) delete process.env[name];
@@ -104,6 +104,20 @@ test('token precedence skips classic PATs only in shared variables', async t => 
   process.env.COPILOT_GITHUB_TOKEN = 'ghp_classic';
   await assert.rejects(resolveToken(), /COPILOT_GITHUB_TOKEN is a classic PAT/);
   await assert.rejects(resolveToken({ token: 'ghp_classic' }), /token option is a classic PAT/);
+});
+
+test('user picks a gh account and overrides token variables', async t => {
+  const { cache } = await setup(t);
+  await withEnv(t, { COPILOT_GITHUB_TOKEN: 'github_pat_copilot', GH_TOKEN: 'gho_gh', GITHUB_TOKEN: 'gho_github' });
+  assert.deepEqual(await resolveToken({ user: 'alice' }), { token: 'gho_alice', source: 'gh login (alice)', skipped: [] });
+  assert.deepEqual(await resolveToken({ user: 'bob_corp', host: 'corp.ghe.com' }), { token: 'gho_bob_corp', source: 'gh login (bob_corp)', skipped: [] });
+  assert.equal((await resolveToken({ token: 'gho_explicit', user: 'alice' })).token, 'gho_explicit');
+  await assert.rejects(resolveToken({ user: '--hostname' }), /Invalid GitHub user/);
+  t.mock.method(globalThis, 'fetch', async (_url, { headers }) => {
+    assert.equal(headers.Authorization, 'Bearer gho_alice');
+    return new Response(JSON.stringify({ data: [m('allowed', true, 'enabled')] }));
+  });
+  assert.equal((await query({}, { cache, user: 'alice' })).eligibility.tokenSource, 'gh login (alice)');
 });
 
 test('no usable token fails before network', async t => {

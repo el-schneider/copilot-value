@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `--user LOGIN` picks one of several gh accounts on a host (`gh auth token --user`), ignoring token variables. JSON reports it as `tokenSource: "gh login (LOGIN)"`.
+
 ## 0.5.0
 
 - Scores come from [model-frontier](https://github.com/el-schneider/model-frontier), which moves Artificial Analysis to its v2 free endpoint (`/api/v2/language/models/free`). The old endpoint retires before 4 November 2026. Scores are cached 24 hours and shared with the `model-frontier` CLI.

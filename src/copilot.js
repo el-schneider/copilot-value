@@ -21,14 +21,16 @@ const isClassicPat = token => token.startsWith('ghp_');
 // Plain GitHub tokens work for /models; no Copilot session-token exchange needed.
 // Copilot rejects classic PATs outright, so generic shared variables holding one are skipped;
 // an explicit token or COPILOT_GITHUB_TOKEN is authoritative and fails instead of switching identity.
-export async function resolveToken({ token, host } = {}) {
-  const [source, value] = token !== undefined ? ['token option', token] : ['COPILOT_GITHUB_TOKEN', process.env.COPILOT_GITHUB_TOKEN];
+// A user picks that gh account and overrides every variable, which cannot name an account.
+export async function resolveToken({ token, host, user } = {}) {
+  if (user !== undefined && !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(user)) throw Error(`Invalid GitHub user: ${user}`);
+  const [source, value] = token !== undefined ? ['token option', token] : user ? [] : ['COPILOT_GITHUB_TOKEN', process.env.COPILOT_GITHUB_TOKEN];
   if (value) {
     if (isClassicPat(value)) throw Error(`${source} is a classic PAT (ghp_), which Copilot rejects; ${tokenHelp}`);
     return { token: value, source, skipped: [] };
   }
   const skipped = [];
-  for (const name of ['GH_TOKEN', 'GITHUB_TOKEN']) {
+  for (const name of user ? [] : ['GH_TOKEN', 'GITHUB_TOKEN']) {
     const envToken = process.env[name];
     if (!envToken) continue;
     if (!isClassicPat(envToken)) return { token: envToken, source: name, skipped };
@@ -38,14 +40,15 @@ export async function resolveToken({ token, host } = {}) {
   const env = { ...process.env };
   delete env.GH_TOKEN;
   delete env.GITHUB_TOKEN;
+  const ghSource = user ? `gh login (${user})` : 'gh login';
   let ghToken;
   try {
-    ghToken = (await promisify(execFile)('gh', ['auth', 'token', ...(host ? ['--hostname', host] : [])], { encoding: 'utf8', timeout: 10000, env })).stdout.trim();
+    ghToken = (await promisify(execFile)('gh', ['auth', 'token', ...(host ? ['--hostname', host] : []), ...(user ? ['--user', user] : [])], { encoding: 'utf8', timeout: 10000, env })).stdout.trim();
   } catch (error) {
     throw Error(`No usable GitHub token: ${skippedNote}${tokenHelp} (${error.code === 'ENOENT' ? 'gh CLI not found' : (error.stderr || error.message).trim()})`);
   }
-  if (!ghToken || isClassicPat(ghToken)) throw Error(`No usable GitHub token: ${skippedNote}gh login returned ${ghToken ? 'a classic PAT' : 'nothing'}; ${tokenHelp}`);
-  return { token: ghToken, source: 'gh login', skipped };
+  if (!ghToken || isClassicPat(ghToken)) throw Error(`No usable GitHub token: ${skippedNote}${ghSource} returned ${ghToken ? 'a classic PAT' : 'nothing'}; ${tokenHelp}`);
+  return { token: ghToken, source: ghSource, skipped };
 }
 export const skippedTokenNotice = ({ skippedTokens, tokenSource }) => `Ignored ${skippedTokens.join(' and ')}: classic PAT, which Copilot rejects. Used ${tokenSource} instead.`;
 
@@ -92,11 +95,11 @@ export function parseEligibility(raw) {
   return { modelIds: [...new Set(enabled.map(m => m.id))].sort(), selection: policyOnly ? 'enabled-policy' : 'model-picker' };
 }
 
-export async function loadEligibility({ token, host, cache = join(cacheDir(), 'eligibility.json'), offline = false, refresh = false, signal } = {}) {
+export async function loadEligibility({ token, host, user, cache = join(cacheDir(), 'eligibility.json'), offline = false, refresh = false, signal } = {}) {
   if (offline && refresh) throw Error('offline and refresh cannot be combined');
   host ??= process.env.GH_HOST;
   const endpoint = endpointFor(host);
-  const auth = await resolveToken({ token, host });
+  const auth = await resolveToken({ token, host, user });
   const tokenInfo = { tokenSource: auth.source, skippedTokens: auth.skipped };
   const accountHash = createHash('sha256').update(`${endpoint}\0${auth.token}`).digest('hex');
   const saved = refresh ? undefined : await jsonFile(cache, true);
