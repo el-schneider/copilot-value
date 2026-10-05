@@ -34,7 +34,7 @@ Read-only: no inference calls, no quota spent, nothing changed on your account.
 
 Node.js 22.19+ and the [GitHub CLI](https://cli.github.com) logged in (`gh auth login`), or `GITHUB_TOKEN` set.
 
-Token order: `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, then the gh login. Copilot accepts gh OAuth tokens and [fine-grained PATs](https://github.com/settings/personal-access-tokens/new) with the **Copilot Requests** permission, but no classic PATs (`ghp_...`). A classic PAT in `GH_TOKEN` or `GITHUB_TOKEN` is skipped with a notice. `--all` ranks the published catalog and needs no token.
+Token order: `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, then the gh login. With several gh accounts on one host, `--user LOGIN` uses that account's token and ignores the token variables. Copilot accepts gh OAuth tokens and [fine-grained PATs](https://github.com/settings/personal-access-tokens/new) with the **Copilot Requests** permission, but no classic PATs (`ghp_...`). A classic PAT in `GH_TOKEN` or `GITHUB_TOKEN` is skipped with a notice. `--all` ranks the published catalog and needs no token.
 
 ```sh
 npm install -g copilot-value
@@ -49,6 +49,7 @@ copilot-value --input 200000 --cached-input 150000 --output 8000   # your worklo
 copilot-value --margin 0             # strict frontier, no alternatives
 copilot-value --all-versions         # include older models of a listed family
 copilot-value best --models claude-opus-5.5,gpt-6-sol   # compare a shortlist
+copilot-value --host corp.ghe.com --user alice_corp   # an enterprise or second gh account
 copilot-value --verbose              # plus benchmark variants, exclusion reasons, timestamps
 copilot-value --json                 # for scripts and agents
 ```

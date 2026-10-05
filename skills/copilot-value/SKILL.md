@@ -24,7 +24,7 @@ copilot-value --json --offline             # no network; accepts stale snapshot
 copilot-value refresh                      # force-refresh every source
 ```
 
-Options: `--source aa|arena`, `--min-score N`, `--margin N` (value alternatives; default 5 for aa, 50 for arena; 0 = none), `--all-versions` (keep older family members as alternatives), `--top 1..100`, `--input/--cached-input/--cache-write/--output N` (cached and write are subsets of input), `--models a,b`, `--mapping FILE` (JSON `{copilotId: benchmarkSlug}` to fix a match), `--host corp.ghe.com`, `--cache FILE`.
+Options: `--source aa|arena`, `--min-score N`, `--margin N` (value alternatives; default 5 for aa, 50 for arena; 0 = none), `--all-versions` (keep older family members as alternatives), `--top 1..100`, `--input/--cached-input/--cache-write/--output N` (cached and write are subsets of input), `--models a,b`, `--mapping FILE` (JSON `{copilotId: benchmarkSlug}` to fix a match), `--host corp.ghe.com` (or `GH_HOST`), `--user LOGIN` (that gh account's token; ignores token variables), `--cache FILE`.
 
 ## Score sources
 
@@ -49,7 +49,7 @@ Options: `--source aa|arena`, `--min-score N`, `--margin N` (value alternatives;
 - Only `models[]` from a non-`--all` run are usable on this account. `--all` output and `skipped[]` are not.
 - Scores measure benchmarks, not task success. Token cost is an estimate, not a bill; it ignores subscription fees, included allowances, and remaining quota.
 - Default workload is 100k input / 10k output, no cache hits. Pass the real shape when known.
-- Rankings do not fall back to the catalog on auth errors. On `{"error": ...}` mentioning the token, tell the user to run `gh auth login` or set `COPILOT_GITHUB_TOKEN` to a fine-grained PAT with the Copilot Requests permission. Copilot rejects classic PATs (`ghp_`); one in `GH_TOKEN`/`GITHUB_TOKEN` is skipped and reported in `eligibility.skippedTokens`.
+- Rankings do not fall back to the catalog on auth errors. On `{"error": ...}` mentioning the token, tell the user to run `gh auth login` or set `COPILOT_GITHUB_TOKEN` to a fine-grained PAT with the Copilot Requests permission. Copilot rejects classic PATs (`ghp_`); one in `GH_TOKEN`/`GITHUB_TOKEN` is skipped and reported in `eligibility.skippedTokens`. If the token belongs to the wrong account, rerun with `--user LOGIN`.
 
 ## Data
 
