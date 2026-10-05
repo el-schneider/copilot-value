@@ -58,7 +58,7 @@ test('default query intersects account eligibility; --all bypasses authenticatio
   const publicRank = await query({}, { token: undefined, cache, all: true, offline: true });
   assert.equal(publicRank.models[0].id, 'disabled');
   const cli = fileURLToPath(new URL('../bin/cli.js', import.meta.url));
-  const run = spawnSync(process.execPath, [cli, '--cache', cache, '--offline', '--json'], { encoding: 'utf8', env: { ...process.env, GITHUB_TOKEN: token } });
+  const run = spawnSync(process.execPath, [cli, '--cache', cache, '--offline', '--json'], { encoding: 'utf8', env: { ...process.env, COPILOT_GITHUB_TOKEN: '', GH_TOKEN: '', GITHUB_TOKEN: token } });
   assert.equal(run.status, 0, run.stderr);
   assert.equal(JSON.parse(run.stdout).models[0].id, 'allowed');
   assert.equal(run.stdout.includes('fake-github'), false);
