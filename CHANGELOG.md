@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The pi tool and `/gh-model` check eligibility with pi's Copilot login and its endpoint, including GitHub Enterprise logins. gh, `GH_HOST` and token variables no longer affect them. pi keeps its own eligibility cache, and the pi tool accepts `offline` only with `all`.
+
 ## 0.5.0
 
 - Scores come from [model-frontier](https://github.com/el-schneider/model-frontier), which moves Artificial Analysis to its v2 free endpoint (`/api/v2/language/models/free`). The old endpoint retires before 4 November 2026. Scores are cached 24 hours and shared with the `model-frontier` CLI.

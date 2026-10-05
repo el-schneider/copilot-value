@@ -248,24 +248,48 @@ test('help works without credentials and its ranking examples execute against a 
 test('pi tool ranks only authenticated Copilot models; command requires selection and consent', async t => {
   const dir = await temp(t), cache = join(dir, 'snapshot.json');
   await writeFile(cache, JSON.stringify(fixture()));
-  const previous = process.env.COPILOT_VALUE_CACHE;
-  const previousToken = process.env.GITHUB_TOKEN;
-  process.env.COPILOT_VALUE_CACHE = cache;
-  process.env.GITHUB_TOKEN = 'test-token';
-  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ data: [{ id: 'alpha', model_picker_enabled: true, policy: { state: 'enabled' } }] })));
-  t.after(() => {
-    if (previous === undefined) delete process.env.COPILOT_VALUE_CACHE; else process.env.COPILOT_VALUE_CACHE = previous;
-    if (previousToken === undefined) delete process.env.GITHUB_TOKEN; else process.env.GITHUB_TOKEN = previousToken;
+  // Every non-pi credential source is poisoned: using any of them fails the request assertions or throws.
+  const poisoned = { COPILOT_VALUE_CACHE: cache, COPILOT_GITHUB_TOKEN: 'github_pat_not_pi', GH_TOKEN: 'gho_not_pi', GITHUB_TOKEN: 'gho_not_pi', GH_HOST: 'not-a-copilot-host.example', PATH: '' };
+  const saved = Object.fromEntries(Object.keys(poisoned).map(name => [name, process.env[name]]));
+  Object.assign(process.env, poisoned);
+  t.after(() => { for (const [name, value] of Object.entries(saved)) value === undefined ? delete process.env[name] : process.env[name] = value; });
+  const requests = [];
+  let status = 200;
+  t.mock.method(globalThis, 'fetch', async (url, { headers }) => {
+    requests.push([String(url), headers.Authorization]);
+    return new Response(status === 200 ? JSON.stringify({ data: [{ id: 'alpha', model_picker_enabled: true, policy: { state: 'enabled' } }] }) : 'bad token', { status });
   });
   let tool, command, selectedModel, confirm = false;
   extension({ registerTool: t => { tool = t; }, registerCommand: (_, c) => { command = c; }, setModel: async m => { selectedModel = m; return true; }, getThinkingLevel: () => 'high' });
   const alpha = { provider: 'github-copilot', id: 'alpha' };
-  const ctx = { hasUI: true, waitForIdle: async () => {}, modelRegistry: { getAvailable: () => [alpha, { provider: 'other', id: 'beta' }], find: () => alpha }, ui: { select: async (_, rows) => rows[0], confirm: async () => confirm, notify: () => {} } };
-  const result = await tool.execute('test', { mode: 'value' }, undefined, undefined, ctx);
+  const login = { ok: true, apiKey: 'tid=pi', baseUrl: 'https://api.business.githubcopilot.com' };
+  let auth = login;
+  const ctx = { hasUI: true, waitForIdle: async () => {}, modelRegistry: { getAvailable: () => [alpha, { provider: 'other', id: 'beta' }], find: () => alpha, getApiKeyAndHeaders: async () => auth }, ui: { select: async (_, rows) => rows[0], confirm: async () => confirm, notify: () => {} } };
+  const run = params => tool.execute('test', params, undefined, undefined, ctx);
+  const piRequest = ['https://api.business.githubcopilot.com/models', 'Bearer tid=pi'];
+  const result = await run({ mode: 'value' });
   assert.equal(result.details.total, 1);
   assert.equal(result.details.models[0].id, 'alpha');
+  assert.equal(result.details.eligibility.tokenSource, 'pi login');
+  assert.deepEqual(requests, [piRequest]);
+  assert.ok(JSON.parse(await readFile(`${cache}.eligibility-pi-login.json`, 'utf8')).modelIds.includes('alpha'));
+  await assert.rejects(readFile(`${cache}.eligibility.json`), { code: 'ENOENT' });
   assert.equal(selectedModel, undefined);
+  await assert.rejects(run({ offline: true }), /offline needs all=true/);
+  assert.equal((await run({ all: true, offline: true })).details.scope, 'published-copilot-catalog');
+  auth = { ok: false, error: 'No API key found for "github-copilot"' };
+  await assert.rejects(run({}), /pi Copilot login: No API key/);
+  auth = { ok: true, apiKey: 'tid=pi' };
+  await assert.rejects(run({}), /no Copilot token or endpoint/);
+  auth = { ...login, apiKey: 'tid=rotated' };
+  status = 401;
+  await assert.rejects(run({}), /Token from pi login rejected; run \/login in pi/);
+  auth = login;
+  status = 200;
+  await rm(`${cache}.eligibility-pi-login.json`);
+  requests.length = 0;
   await command.handler('best', ctx);
+  assert.deepEqual(requests, [piRequest]);
   assert.equal(selectedModel, undefined);
   confirm = true;
   await command.handler('', ctx);

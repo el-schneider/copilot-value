@@ -6,7 +6,9 @@ export async function query(raw = {}, { all = false, modelIds, registryModelIds,
   const cache = sourceOptions.cache ?? defaultCache(rankingOptions.source);
   let eligible, allowed = modelIds;
   if (!all) {
-    eligible = await loadEligibility({ ...sourceOptions, cache: `${cache}.eligibility.json` });
+    // A caller login rotates independently of gh, so it keeps its own file instead of evicting the CLI's.
+    const name = sourceOptions.login ? `eligibility-${sourceOptions.login.source.replace(/\W+/g, '-')}` : 'eligibility';
+    eligible = await loadEligibility({ ...sourceOptions, cache: `${cache}.${name}.json` });
     allowed = eligible.modelIds.filter(id => (!modelIds || modelIds.some(m => m.replace(/^github-copilot\//, '') === id)) && (!registryModelIds || registryModelIds.includes(id)));
   }
   const snapshot = await loadSnapshot({ ...sourceOptions, cache, source: rankingOptions.source });
