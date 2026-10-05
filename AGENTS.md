@@ -1,0 +1,2 @@
+- User-visible changes get one line under `## Unreleased` in `CHANGELOG.md`, in the style of the existing entries.
+- Never bump `package.json`, add a version heading, tag, or create a release. `.github/workflows/release.yml` does that at release time.
