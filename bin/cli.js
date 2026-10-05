@@ -11,7 +11,7 @@ const flags = Object.keys(querySchema.properties).filter(key => key !== 'mode');
 try {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     ...Object.fromEntries(flags.map(key => [names[key] ?? key, { type: querySchema.properties[key].type === 'boolean' ? 'boolean' : 'string' }])),
-    all: { type: 'boolean' }, host: { type: 'string' },
+    all: { type: 'boolean' }, host: { type: 'string' }, user: { type: 'string' },
     json: { type: 'boolean' }, verbose: { type: 'boolean' }, offline: { type: 'boolean' }, help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
     cache: { type: 'string' }, mapping: { type: 'string' }, models: { type: 'string' },
   } });
@@ -72,6 +72,7 @@ OPTIONS
   --models id,id           Narrow to exact IDs; never bypasses eligibility
   --all                    Published catalog instead of subscription
   --host HOST              github.com or *.ghe.com (or GH_HOST); token from COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN or gh login
+  --user LOGIN             Use this gh account's token on the host, ignoring token variables
   --mapping FILE           JSON object: Copilot ID -> exact benchmark slug
   --cache FILE             Snapshot path (or COPILOT_VALUE_CACHE)
   --offline                Use cached snapshot without network, even if stale
@@ -92,7 +93,7 @@ Exit codes: 0 = results, 1 = error (stderr), 2 = no rankable models.`);
     const mappings = values.mapping ? JSON.parse(await readFile(values.mapping, 'utf8')) : {};
     const modelIds = values.models?.split(',').map(id => id.trim());
     if (modelIds?.some(id => !id)) throw Error('--models cannot contain empty IDs');
-    const result = await getRankings(query, { cache: values.cache, host: values.host, offline: values.offline, refresh: command === 'refresh', all: values.all, mappings, modelIds });
+    const result = await getRankings(query, { cache: values.cache, host: values.host, user: values.user, offline: values.offline, refresh: command === 'refresh', all: values.all, mappings, modelIds });
     if (result.eligibility?.skippedTokens.length) console.error(`copilot-value: ${skippedTokenNotice(result.eligibility)}`);
     console.log(values.json ? JSON.stringify(result, null, 2) : format(result, { verbose: values.verbose, style: styleText }));
     if (!result.total) process.exitCode = 2;
