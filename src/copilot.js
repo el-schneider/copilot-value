@@ -65,7 +65,7 @@ async function jsonFile(path, optional = false) {
     throw Error(`Cannot read ${path}: ${error instanceof SyntaxError ? 'invalid JSON' : error.code ?? 'read failed'}`);
   }
 }
-async function get(url, { token, source }, signal) {
+async function get(url, { token, source, help }, signal) {
   const response = await fetch(url, {
     headers: { ...headers, Authorization: `Bearer ${token}` }, redirect: 'error',
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
@@ -73,7 +73,7 @@ async function get(url, { token, source }, signal) {
   if (!response.ok) {
     const body = (await response.text()).replaceAll(token, '[token]').replace(/\s+/g, ' ').trim().slice(0, 200);
     const hint = [400, 401, 403].includes(response.status)
-      ? `\nToken from ${source} rejected; ${tokenHelp}. Use --all to rank the published catalog without a token.`
+      ? `\nToken from ${source} rejected; ${help ?? `${tokenHelp}. Use --all to rank the published catalog without a token.`}`
       : '';
     throw Error(`Copilot ${new URL(url).pathname}: HTTP ${response.status}${body ? ` (${body})` : ''}${hint}`);
   }
@@ -95,16 +95,17 @@ export function parseEligibility(raw) {
   return { modelIds: [...new Set(enabled.map(m => m.id))].sort(), selection: policyOnly ? 'enabled-policy' : 'model-picker' };
 }
 
-export async function loadEligibility({ token, host, user, cache = join(cacheDir(), 'eligibility.json'), offline = false, refresh = false, signal } = {}) {
+// login ({ token, source, endpoint, help }) is a caller-owned credential, used as is instead of resolving one.
+export async function loadEligibility({ token, host, user, login, cache = join(cacheDir(), 'eligibility.json'), offline = false, refresh = false, signal } = {}) {
   if (offline && refresh) throw Error('offline and refresh cannot be combined');
   host ??= process.env.GH_HOST;
-  const endpoint = endpointFor(host);
-  const auth = await resolveToken({ token, host, user });
+  const endpoint = login?.endpoint ?? endpointFor(host);
+  const auth = login ? { ...login, skipped: [] } : await resolveToken({ token, host, user });
   const tokenInfo = { tokenSource: auth.source, skippedTokens: auth.skipped };
   const accountHash = createHash('sha256').update(`${endpoint}\0${auth.token}`).digest('hex');
   const saved = refresh ? undefined : await jsonFile(cache, true);
   if (saved) {
-    if (saved.version !== 1 || !Number.isFinite(saved.fetchedAt) || saved.fetchedAt <= 0 || saved.fetchedAt > Date.now() + 60000 || !Array.isArray(saved.modelIds) || saved.modelIds.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9._-]+$/.test(id))) throw Error(`Invalid eligibility cache ${cache}; run refresh`);
+    if (saved.version !== 1 || !Number.isFinite(saved.fetchedAt) || saved.fetchedAt <= 0 || saved.fetchedAt > Date.now() + 60000 || !Array.isArray(saved.modelIds) || saved.modelIds.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9._-]+$/.test(id))) throw Error(`Invalid eligibility cache ${cache}; delete it or run refresh`);
     if (saved.accountHash === accountHash && (offline || Date.now() - saved.fetchedAt < eligibilityTtl)) return { ...saved, ...tokenInfo, stale: Date.now() - saved.fetchedAt >= eligibilityTtl };
   }
   if (offline) throw Error('No matching offline eligibility cache for current GitHub token; run copilot-value refresh');

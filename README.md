@@ -70,7 +70,7 @@ Full JSON contract, caveats, and data sources: [skills/copilot-value/SKILL.md](s
 npx skills add el-schneider/copilot-value
 ```
 
-Users of [pi](https://github.com/badlogic/pi-mono) get a `copilot_value` tool and `/gh-model` command with `pi install copilot-value`.
+Users of [pi](https://github.com/badlogic/pi-mono) get a `copilot_value` tool and `/gh-model` command with `pi install copilot-value`. Both check eligibility with pi's own Copilot login, including GitHub Enterprise logins, not with gh or token variables.
 
 ## License
 

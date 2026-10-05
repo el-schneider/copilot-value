@@ -3,6 +3,7 @@
 ## Unreleased
 
 - `--user LOGIN` picks one of several gh accounts on a host (`gh auth token --user`), ignoring token variables. JSON reports it as `tokenSource: "gh login (LOGIN)"`.
+- The pi tool and `/gh-model` check eligibility with pi's Copilot login and its endpoint, including GitHub Enterprise logins. gh, `GH_HOST` and token variables no longer affect them. pi keeps its own eligibility cache, and the pi tool accepts `offline` only with `all`.
 
 ## 0.5.0
 

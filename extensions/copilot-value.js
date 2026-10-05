@@ -6,12 +6,23 @@ export default function (pi) {
     const available = ctx.modelRegistry.getAvailable().filter(m => m.provider === 'github-copilot');
     const { all = false, offline = false, ...ranking } = params;
     if (!all && !available.length) throw Error('No authenticated Copilot models in pi. Use /login first.');
-    return getRankings(ranking, { all, offline, signal, registryModelIds: available.map(m => m.id) });
+    // Resolving pi's rotating Copilot token can refresh it over the network, so offline cannot check subscription eligibility.
+    if (!all && offline) throw Error('offline needs all=true in pi: subscription eligibility needs a live check with pi\'s Copilot login');
+    const login = all ? undefined : await piLogin(ctx, available[0]);
+    return getRankings(ranking, { all, offline, signal, login, registryModelIds: available.map(m => m.id) });
+  }
+
+  // Eligibility must come from the account pi sends requests with, not from gh or token variables.
+  async function piLogin(ctx, model) {
+    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+    if (!auth.ok) throw Error(`pi Copilot login: ${auth.error}`);
+    if (!auth.apiKey || !auth.baseUrl) throw Error('pi returned no Copilot token or endpoint. Update pi or run /login.');
+    return { token: auth.apiKey, source: 'pi login', endpoint: auth.baseUrl, help: 'run /login in pi, or pass all=true to rank the published catalog' };
   }
 
   pi.registerTool({
     name: 'copilot_value', label: 'Copilot Value',
-    description: 'Rank subscription-enabled GitHub Copilot models for coding, using pi OAuth login and Copilot /models. mode=value (default): price/score frontier, cheapest first. mode=best: strongest first. Scores: Artificial Analysis when ARTIFICIAL_ANALYSIS_API_KEY is set, else LMArena WebDev (no key); source overrides. Default scope also intersects pi registry. all=true shows published catalog instead. Returns dispatchId; does not switch models, launch workers, or spend inference credits. offline=true permits timestamped stale data. Top 10 by default (max 100).',
+    description: 'Rank subscription-enabled GitHub Copilot models for coding, using pi OAuth login and Copilot /models. mode=value (default): price/score frontier, cheapest first. mode=best: strongest first. Scores: Artificial Analysis when ARTIFICIAL_ANALYSIS_API_KEY is set, else LMArena WebDev (no key); source overrides. Default scope also intersects pi registry. all=true shows published catalog instead. Returns dispatchId; does not switch models, launch workers, or spend inference credits. offline=true permits timestamped stale data and requires all=true. Top 10 by default (max 100).',
     promptSnippet: 'Find a GitHub Copilot model by benchmark score or workload value.',
     promptGuidelines: [
       'Use copilot_value when the user explicitly requests GitHub Copilot model recommendations or workers.',
